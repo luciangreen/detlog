@@ -1,0 +1,2 @@
+# detlog
+Deterministically compiles Prolog
