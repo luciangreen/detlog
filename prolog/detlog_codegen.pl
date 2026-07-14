@@ -46,8 +46,10 @@ wrapper_clause(SourceInfo, Analysis, FallbackPolicy, SourceModule, SourcePred, C
     SourcePred = source_predicate{predicate:Name/Arity, line:Line},
     functor(Head, Name, Arity),
     classify_predicate(Analysis, Name/Arity, Status),
-    build_body(SourceModule, Head, Status, BodyText, ConversionNote),
-    format(string(ClauseText), '~q :- ~s.~n', [Head, BodyText]),
+    build_body(SourceModule, Head, Status, BodyGoal, ConversionNote),
+    Clause = (Head :- BodyGoal),
+    term_text(Clause, ClauseTermText),
+    format(string(ClauseText), '~s.~n', [ClauseTermText]),
     record_source_map(source_map{
         file:SourceInfo.file,
         source_module:SourceInfo.source_module,
@@ -66,14 +68,14 @@ classify_predicate(Analysis, PI, converted) :-
     !.
 classify_predicate(_, _, fallback).
 
-build_body(SourceModule, Head, converted, BodyText, converted) :-
+build_body(SourceModule, Head, converted, BodyGoal, converted) :-
     Head =.. [Name|Args],
     Qualified =.. [Name|Args],
-    format(string(BodyText), '~q:~q', [SourceModule, Qualified]).
-build_body(SourceModule, Head, fallback, BodyText, fallback) :-
+    BodyGoal = SourceModule:Qualified.
+build_body(SourceModule, Head, fallback, BodyGoal, fallback) :-
     Head =.. [Name|Args],
     Qualified =.. [Name|Args],
-    format(string(BodyText), '~q:~q', [SourceModule, Qualified]).
+    BodyGoal = SourceModule:Qualified.
 
 maybe_fallback_diagnostic(converted, _, _, _, _, _).
 maybe_fallback_diagnostic(fallback, FallbackPolicy, PI, File, Line, Note) :-
@@ -93,8 +95,14 @@ maybe_fallback_diagnostic(fallback, FallbackPolicy, PI, File, Line, Note) :-
     ).
 
 module_text(Module, Exports, WrapperClauses, Code) :-
-    format(string(ModuleDecl), ':- module(~q, ~q).~n', [Module, Exports]),
+    term_text((:- module(Module, Exports)), ModuleDeclBody),
+    format(string(ModuleDecl), '~s.~n', [ModuleDeclBody]),
     atomic_list_concat([ModuleDecl|WrapperClauses], Code).
+
+term_text(Term, Text) :-
+    copy_term(Term, Copy),
+    numbervars(Copy, 0, _),
+    format(string(Text), '~q', [Copy]).
 
 load_generated_code(Module, Code) :-
     tmp_file_stream(text, TempFile, Stream),
