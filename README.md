@@ -2,6 +2,41 @@
 
 Detlog is an in-SWI-Prolog source converter for examining and reducing hidden nondeterminism while preserving ordinary Prolog semantics. It attempts to replace choicepoints with the splice predicate to combine outputs of nondeterministic predicates and convert cut into predicates.
 
+## Showcase
+
+From the repository root, these commands demonstrate the main workflows:
+
+### Run a query through Detlog
+
+```bash
+swipl -q -g "use_module(prolog/detlog), once(detlog('test/fixtures/sample_program.pl', det_sum([1,2,3], S), [fallback(silent)])), format('S=~w~n', [S]), halt."
+```
+
+### Generate wrapper code for a source file
+
+```bash
+swipl -q -g "use_module(prolog/detlog), detlog_compile('test/fixtures/sample_program.pl', [code('generated.pl'), fallback(silent)]), halt."
+sed -n '1,7p' generated.pl
+```
+
+### Print inferred modes and determinism
+
+```bash
+swipl -q -g "use_module(prolog/detlog), detlog_compile('test/fixtures/sample_program.pl', [modes(true), fallback(silent)]), halt."
+```
+
+### Inspect fallback diagnostics for predicates Detlog keeps conservative
+
+```bash
+swipl -q -g "use_module(prolog/detlog), use_module(prolog/detlog_diagnostics), detlog_compile('test/fixtures/sample_program.pl', [fallback(silent)]), diagnostics(Ds), writeln(Ds), halt."
+```
+
+### Run the bundled benchmark scenarios
+
+```bash
+swipl -q -s benchmark/run_benchmarks.pl
+```
+
 ## REPL-first workflow
 
 ```prolog
