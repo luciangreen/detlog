@@ -1,0 +1,1272 @@
+Deterministic(ally) compiled Prolog: Detlog
+#
+prolog
+#
+determinism
+#
+removes
+#
+nondeterminism
+Apple IIe screen with Detlog splice predicate to replace the nondeterministic interpreter
+
+Detlog icons, including for the 6502 processor
+
+A deterministic language with the syntax of Prolog without cuts but a compiler that compiles to C and findall that converts to deterministic loops, where instead of cut programmers eliminate unnecessary cuts, convert cuts to if-then statements exiting loops called Detlog or BASIClog.
+
+Write splice(A,B) where For example:
+c:-a(A),b(B).
+a(A):-member(A,[1,2]).
+b(B):-member(B,[3,4]).
+Which gives:
+A = 1,
+B = 3 ;
+A = 1,
+B = 4 ;
+A = 2,
+B = 3 ;
+A = 2,
+B = 4.
+Becomes:
+c:-a(A),b(B),splice([A,B],C).
+a(A):-member_cp(A,[1,2]).
+b(B):-member_cp(B,[3,4]).
+member_cp(cp(D),D).
+
+Which gives:
+C=[[1,3],[1,4],[2,3],[2,4]].
+
+Yes. A clean Prolog version is:
+
+c(C) :-
+a(A),
+b(B),
+splice([A,B], C).
+a(A) :-
+member_cp(A, [1,2]).
+b(B) :-
+member_cp(B, [3,4]).
+member_cp(cp(D), D).
+splice(Template, Result) :-
+expand_cp_template(Template, Result).
+expand_cp_template([], [[]]).
+expand_cp_template([cp(Choices)|Rest], Result) :-
+expand_cp_template(Rest, RestResults),
+findall([Choice|R],
+( member(Choice, Choices),
+member(R, RestResults)
+),
+Result).
+expand_cp_template([X|Rest], Result) :-
+X = cp(_),
+expand_cp_template(Rest, RestResults),
+findall([X|R],
+member(R, RestResults),
+Result).
+
+Query:
+
+?- c(C).
+
+Result:
+
+C = [[1,3],[1,4],[2,3],[2,4]].
+
+The important transformation is:
+
+a(A) :- member(A,[1,2]).
+
+becomes:
+
+a(A) :- member_cp(A,[1,2]).
+
+so instead of generating A = 1 ; A = 2, it returns:
+
+A = cp([1,2])
+
+Then:
+
+splice([A,B],C)
+
+expands:
+
+[cp([1,2]), cp([3,4])]
+
+into the Cartesian product:
+
+[[1,3],[1,4],[2,3],[2,4]]
+
+Change splice to use determinism without findall instead of findall and then apply member to the results to give A = 1,
+B = 3 ;
+A = 1,
+B = 4 ;
+A = 2,
+B = 3 ;
+A = 2,
+B = 4.
+Remember to adjust splice(X,Y) so X can have n A,B,...
+
+Use a deterministic Cartesian-product builder, then member/2 only at the end:
+
+c(A, B) :-
+a(A0),
+b(B0),
+splice([A0, B0], Rows),
+member([A, B], Rows).
+a(A) :-
+member_cp(A, [1,2]).
+b(B) :-
+member_cp(B, [3,4]).
+member_cp(cp(D), D).
+splice(Xs, Ys) :-
+splice_rows(Xs, [[]], Ys).
+splice_rows([], Acc, Acc).
+splice_rows([cp(Choices)|Rest], Acc, Ys) :-
+extend_rows(Acc, Choices, Acc1),
+splice_rows(Rest, Acc1, Ys).
+splice_rows([X|Rest], Acc, Ys) :-
+X = cp(),
+extend_rows(Acc, [X], Acc1),
+splice_rows(Rest, Acc1, Ys).
+extend_rows([], _, []).
+extend_rows([Row|Rows], Choices, Out) :-
+extend_one_row(Row, Choices, Out1),
+extend_rows(Rows, Choices, Out2),
+append(Out1, Out2, Out).
+extend_one_row(, [], []).
+extend_one_row(Row, [Choice|Choices], [[Choice|Row]|Out]) :-
+extend_one_row(Row, Choices, Out).
+
+For corrected order:
+
+c(A, B) :-
+a(A0),
+b(B0),
+splice([A0, B0], Rows0),
+maplist(reverse, Rows0, Rows),
+member([A, B], Rows).
+
+Result:
+
+A = 1, B = 3 ;
+A = 1, B = 4 ;
+A = 2, B = 3 ;
+A = 2, B = 4.
+
+This generalises to any arity:
+
+splice([A,B,C,D], Rows),
+member([A1,B1,C1,D1], Rows).
+
+I need Prolog because it produces cognitive code. I need Detlog because it combines the syntax of Prolog with even greater simplicity of fewer compiler instructions.
+
+Detlog deals with multiple choicepoints by splicing output from the two branches as soon as possible.
+
+Can Detlog (possibly with a converter, BASIC compiler, unification, and cut loop exiters) run comfortably on an Apple IIe?
+
+Yes, a small Detlog can run comfortably on an Apple IIe, but only if most work is compiled ahead of time.
+
+Apple IIe limits: 6502/65C02 around 1.023 MHz, 64 KB RAM built in, 16 KB ROM, often expandable, with 40/80-column text modes.
+
+Best design:
+
+Detlog source
+→ converter/compiler
+→ Applesoft BASIC or 6502 assembly
+→ deterministic loops + arrays
+
+What fits well:
+
+a(A) :- member_cp(A,[1,2]).
+b(B) :- member_cp(B,[3,4]).
+c(A,B) :-
+a(A0),
+b(B0),
+splice([A0,B0], Rows),
+member([A,B], Rows).
+
+This can compile to simple nested loops or table iteration. That is Apple IIe-friendly.
+
+What should not live fully on the Apple IIe:
+
+full Prolog engine
+general backtracking
+large unification
+large symbolic term database
+large findall buffers
+
+A practical Detlog for Apple IIe would support:
+
+facts
+small lists
+simple unification
+deterministic calls
+member_cp choice packets
+splice
+loop exiters instead of cut
+optional final member enumeration
+
+With floppy: comfortable for loading compiler passes, source files, generated BASIC/assembly, and examples.
+
+Without floppy: possible, but much smaller: type-in programs, cassette, or ROM/RAM-resident mini-Detlog. The compiler must be tiny, and examples should be small.
+
+Best conclusion:
+
+Detlog is more realistic than Prolog on an Apple IIe because it removes hidden backtracking and compiles cognitive Prolog syntax into BASIC-like or 6502-like deterministic loops.
+
+What is the memory usage difference between running it on BASIC or 6502?
+
+Approximate difference:
+
+6502 assembly Detlog runtime:
+~1 KB to 8 KB for a small engine
+Applesoft BASIC Detlog runtime:
+~8 KB to 25+ KB for the same logic
+
+Why BASIC uses more memory:
+
+BASIC stores tokenised program lines
+line numbers cost memory
+variables/arrays use interpreter structures
+strings/lists are expensive
+loops are interpreted, not native
+
+Why 6502 uses less:
+
+direct bytes/instructions
+compact arrays
+manual stack layout
+no BASIC line overhead
+faster deterministic loops
+smaller choice-packet/splice routines
+
+Example:
+
+a(A) :- member_cp(A,[1,2]).
+b(B) :- member_cp(B,[3,4]).
+
+In BASIC, [1,2] and [3,4] become arrays plus loop code.
+
+In 6502, they can be:
+
+A_TABLE: .byte 1,2
+B_TABLE: .byte 3,4
+
+Very compact.
+
+Best practical split:
+
+Use BASIC version:
+for teaching, readability, easy editing.
+Use 6502 version:
+for real speed, lower memory, larger Detlog programs.
+
+Rule of thumb:
+
+6502 assembly may use 3× to 10× less memory than BASIC for the same compiled Detlog program.
+
+What is the most complex program including loops and strings allowed on 6502?
+
+On a 64 KB Apple IIe, a realistic 6502 Detlog limit is roughly:
+
+Program code: 4–16 KB
+Runtime library: 2–8 KB
+Data/tables: 8–24 KB
+Strings heap: 4–16 KB
+Stack/workspace: 2–8 KB
+Screen/OS overhead: remaining memory
+
+So the “comfortable” maximum is a program with:
+
+50–300 simple rules
+10–100 small facts/tables
+nested loops over small lists
+strings mostly under 40–255 chars
+total working data under ~16–32 KB
+
+Example of a safe complex Detlog shape:
+
+word("cat").
+word("dog").
+suffix("s").
+suffix("ed").
+make_word(W2) :-
+word(W),
+suffix(S),
+concat(W,S,W2).
+main(Out) :-
+word(W0),
+suffix(S0),
+splice([W0,S0], Rows),
+member([W,S], Rows),
+concat(W,S,Out).
+
+Compiled to 6502, this is fine because it becomes:
+
+loop over word table
+loop over suffix table
+copy string W
+append string S
+print/store result
+
+A hard but possible upper example:
+
+3–5 nested loops
+several string tables
+simple unification
+small parser/tokeniser
+choice-packet splicing
+final member-style enumeration
+
+What becomes uncomfortable:
+
+large recursive parse trees
+general Prolog unification
+deep term copying
+large findall-style result sets
+many long strings
+dynamic database updates
+
+Best rule:
+
+On 6502, Detlog can support small cognitive symbolic programs, not large general Prolog systems.
+
+For Apple IIe Detlog, the ideal design is:
+
+compile rules to fixed loops
+store facts as compact tables
+store strings once
+avoid heap allocation inside loops
+splice early
+enumerate late
+
+What do avoid heap allocation inside loops and enumerate late mean?
+
+These are classic compiler optimisations that fit Detlog very well.
+
+Avoid heap allocation inside loops
+
+Suppose you write:
+
+word(W) :-
+member_cp(W, ["cat","dog"]).
+suffix(S) :-
+member_cp(S, ["s","ed"]).
+main(X) :-
+word(W),
+suffix(S),
+concat(W,S,X).
+
+A naïve implementation does:
+
+loop
+allocate string "cats"
+loop
+allocate string "cated"
+loop
+allocate string "dogs"
+loop
+allocate string "doged"
+
+Every iteration asks the heap for more memory.
+
+Instead:
+
+allocate one buffer
+reuse it every iteration
+
+Pseudo-6502:
+
+buffer[32]
+copy "cat" to buffer
+append "s"
+print
+copy "cat" to buffer
+append "ed"
+print
+
+No new memory is created inside the loop.
+
+Benefits:
+
+less RAM
+less fragmentation
+faster execution
+
+This was especially important on machines like the Apple IIe.
+
+⸻
+
+Enumerate late
+
+Traditional Prolog:
+
+a(A) :- member(A,[1,2]).
+b(B) :- member(B,[3,4]).
+c(A,B) :-
+a(A),
+b(B).
+
+immediately generates:
+
+A=1,B=3
+A=1,B=4
+A=2,B=3
+A=2,B=4
+
+Detlog instead keeps choices packed:
+
+A = cp([1,2])
+B = cp([3,4])
+
+Then:
+
+splice([A,B], Rows).
+
+gives:
+
+Rows = [[1,3],[1,4],[2,3],[2,4]]
+
+The program works on Rows for as long as possible.
+
+Only at the very end:
+
+member([A,B], Rows).
+
+do we produce individual answers.
+
+That’s “enumerate late”.
+
+Instead of:
+
+generate answer
+generate answer
+generate answer
+generate answer
+
+we do:
+
+build compact structure
+process compact structure
+enumerate only when needed
+
+⸻
+
+In Detlog terms
+
+A useful slogan is:
+
+Splice early, enumerate late.
+
+and
+
+Allocate once, reuse inside loops.
+
+These two rules make a huge difference on a 6502 because CPU speed and RAM are both extremely limited. They also fit your Detlog philosophy of replacing hidden backtracking with explicit deterministic structures.
+
+Could you avoid heap allocation inside loops by using decision tree-type compression (like S2A)?
+
+Yes. Decision-tree/S2A-style compression is one of the best ways to avoid heap allocation inside loops.
+
+Instead of building strings each time:
+
+cat + s = cats
+cat + ed = cated
+dog + s = dogs
+dog + ed = doged
+
+Detlog can compile shared prefixes into a decision tree/trie:
+
+    start
+   /     \
+cat       dog
+/ \ / \
+s ed s ed
+
+Then the loop does not allocate "cats" or "doged" as new heap strings. It walks the tree and emits/copies characters into one fixed output buffer.
+
+So:
+
+concat(W,S,Out)
+
+can compile to:
+
+select W branch
+select S branch
+write chars to reusable buffer
+print/output
+
+For 6502, this is ideal:
+
+string table in ROM/RAM
+decision tree indexes
+one output buffer
+no per-iteration heap allocation
+
+S2A helps because it can discover repeated structure:
+
+cat-s
+cat-ed
+dog-s
+dog-ed
+
+becomes:
+
+word branch + suffix branch
+
+rather than four separate allocated strings.
+
+Best Detlog rule:
+
+Use S2A compression to turn repeated generated outputs into shared decision paths, then use loops only to walk those paths.
+
+So yes: decision-tree compression can replace many heap allocations with table lookup, branch selection, and buffer reuse.
+
+Do the same operation from different clauses once, perhaps using decision-tree compression. For example, a:-a1,a2.b:-a1,b2.->ab:-a1,ab2.ab2:-a2.ab2:-b2.
+
+Yes — this is common-prefix factoring across clauses.
+
+Original:
+
+a :- a1, a2.
+b :- a1, b2.
+
+Both clauses repeat:
+
+a1
+
+So Detlog can factor it once:
+
+ab :-
+a1,
+ab2.
+ab2 :-
+a2.
+ab2 :-
+b2.
+
+Meaning:
+
+run a1 once
+then choose between a2 and b2
+
+This is like decision-tree compression:
+
+Before:
+a -> a1 -> a2
+b -> a1 -> b2
+After:
+ab -> a1 -> choice(a2,b2)
+
+So the compiler optimisation is:
+
+If several clauses share the same prefix, execute the shared prefix once, then splice/branch only at the differing suffixes.
+
+For Detlog, this matters because it avoids:
+
+run a1 for a
+run a1 for b
+
+and replaces it with:
+
+run a1 once
+then continue with alternatives
+
+A more Detlog-shaped version:
+
+ab :-
+once_det(a1),
+splice_branch([a2, b2]).
+
+or:
+
+ab :-
+a1,
+choice([a2, b2]).
+
+General rule:
+
+p :- x, y.
+q :- x, z.
+
+becomes:
+
+pq :-
+x,
+pq2.
+pq2 :- y.
+pq2 :- z.
+
+This is exactly the same idea as trie compression for strings, but applied to predicate sequences instead of characters.
+
+With decision tree compression, how long can programs be if the compiler compiles Detlog into 6502?
+
+With decision-tree compression, Detlog compiled to 6502 could be much larger:
+
+Comfortable: about 10–40 KB Detlog source logic
+Possible with careful tables/overlays: 50–100 KB+ source logic
+Resident 6502 code/data at once: still roughly 20–40 KB usable RAM on a 64 KB Apple IIe.
+
+The trick is that repeated clauses like:
+
+a :- common, x1.
+b :- common, x2.
+c :- common, x3.
+
+do not compile into three full copies. They compile more like:
+
+run common once
+branch/table-select x1/x2/x3
+reuse output buffers
+
+So the source can be much longer than the resident machine code.
+
+A useful estimate:
+
+Without compression: source × 3–20 expansion
+With compression: source × 0.5–3 expansion
+Best case: many repeated clauses collapse into tables
+Worst case: unique clauses still expand normally
+
+So on Apple IIe:
+
+Tiny runtime/compiler stub: 2–8 KB
+Decision tables + code: 10–30 KB
+Buffers/stacks/strings: 4–16 KB
+Overlay/floppy-loaded chunks: much larger total program
+
+The biggest realistic Detlog programs would be table-heavy grammars, classifiers, menu systems, small adventure games, symbolic transformers, or bounded expert systems.
+
+The key limit becomes not “how long is the source?” but:
+
+How much must be resident at once?
+How large are the strings?
+How deep are loops/recursion?
+How many choicepoints must be remembered?
+How much output buffering is needed for splicing?
+
+So the practical answer is:
+
+With decision-tree compression, a Detlog program can feel like tens of KB of logic on a 64 KB Apple IIe, and possibly hundreds of KB if split into floppy-loaded overlays.
+
+Is Detlog the most efficient Apple IIe Prolog?
+
+Potentially, yes in a narrow sense, but it depends on what you mean by “Prolog.”
+
+Traditional Prolog systems on 6502 machines (including Apple II-era implementations) typically support:
+
+Full unification
+Backtracking
+Choicepoint stacks
+Dynamic search
+Variable bindings and trail management
+These features make Prolog expressive, but they consume memory and CPU time.
+
+If Detlog:
+
+Converts nondeterminism into deterministic loops,
+Eliminates most or all runtime choicepoints,
+Compiles directly to 6502 machine code,
+Uses decision-tree compression,
+Avoids heap allocation inside loops,
+Reuses buffers and tables,
+then it could easily outperform a traditional Prolog implementation on an Apple IIe in both speed and memory use.
+
+A rough spectrum is:
+
+System Runtime Cost Expressiveness
+BASIC interpreter High Low
+Interpreted Prolog Very high Very high
+Compiled Prolog Moderate Very high
+Deterministic Detlog Low Medium–high
+Hand-written 6502 assembly Lowest Depends on programmer
+
+The important caveat is that Detlog’s efficiency comes partly from restricting or transforming classic Prolog behavior. If a program relies heavily on arbitrary unification, open-ended backtracking, or runtime search, then either:
+
+Detlog cannot compile it directly, or
+The compiler must generate additional machinery, reducing the advantage.
+For the kinds of programs you’ve described in relation to Loop2 and PLOP—decision trees, classifiers, CFG/DCG-style parsing, symbolic transformations, specification-to-algorithm generation, and deterministic splicing—Detlog could be among the most efficient Prolog-like systems feasible on an Apple IIe.
+
+In fact, if the compiler can transform:
+
+colour(red).
+colour(green).
+colour(blue).
+
+into a compact lookup table or decision tree rather than runtime backtracking, the resulting 6502 code is closer to an optimized expert system than a traditional Prolog engine.
+
+So a reasonable conclusion is:
+
+Detlog is unlikely to be the most efficient implementation of full Prolog on an Apple IIe, because full Prolog requires general unification and backtracking. However, it could be one of the most efficient Prolog-derived logic languages for a large class of deterministic and semi-deterministic programs, especially if it combines direct 6502 compilation, decision-tree compression, and elimination of runtime choicepoints.
+
+What "length" of program is possible with decision tree, Loop2 and PLOP compression?
+
+With decision tree + Loop2 + PLOP compression, the practical “length” could be:
+
+Resident on 64 KB Apple IIe:
+20–60 KB of effective Detlog logic
+With very careful memory layout:
+60–150 KB effective logic
+With floppy overlays / paged modules:
+hundreds of KB, possibly 0.5–1 MB+ total project logic
+
+The key distinction:
+
+Physical 6502 code resident at once: still maybe 10–35 KB
+Effective Detlog source represented: much larger
+
+Why? Because the compiler can merge repeated structures:
+
+a :- common, a1.
+b :- common, b1.
+c :- common, c1.
+
+into something closer to:
+
+run common once
+select branch from compressed decision table
+run only the differing suffix
+reuse buffers
+
+So the expansion changes roughly like this:
+
+Naive Detlog → 6502:
+source × 3–20
+Decision-tree compression:
+source × 0.5–3
+Decision tree + Loop2 + PLOP:
+source × 0.1–2 in good cases
+
+Best cases are classifiers, grammars, menu trees, symbolic rewrite systems, adventure-game logic, deterministic parsers, and repeated clause families.
+
+Worst cases are programs where every clause is unique, string-heavy, deeply recursive, or requires true Prolog backtracking.
+
+So the answer is:
+
+Physically, the Apple IIe still runs tens of KB at once. Logically, Detlog could represent hundreds of KB of Prolog-like program behaviour if PLOP/Loop2 compress repeated choicepoints into loops, tables, and shared suffix/prefix code.
+
+
+2. Context-Free Grammar generator as a central idea in chatbot. Chatbot checks using expert systems. Physics checked against. Physics includes chemistry and biology. Race to replace mathematics with AI with a spec to algorithm. Spec to Algorithm, plop and theorem provers, using Spec to Algorithm to find macroproofs, fill gaps and insert proof sequences.
+3. Spec to Algorithm inserts methodologies for input/output proof specs. Choice points to loops and spliced output- classes define well-writtenness and whether nondeterminism can be refactored simply without lone choice points and backtracking between predicate branches can be made into a single predicate with loops and optionally run expensive predicates. Choice points to loops and spliced output-instead of tabling, edit or morph the repeated clause. How can general cases from multiple algorithms help propose laws? Robots-minimal set of everything, such as Text to Breasonings, Grammar Logic, time travel to imm, Spec to Algorithm, optimisations. Loop2 arg ideas-ways of refactoring or writing without extra choice points, using compression, or cfg generators and non-brute force algorithms.
+4. Spec to Algorithm’s code generator (using CAW, dictionary data) also converts sentence specs into data, then into code using Spec to Algorithm and generators. Tests are changed. Lucian CI/CD tests and modifies code in response to test changes. Predicates are merged. Spec to Algorithm needs to be modified to handle greater than 14 items at a time, possibly with a manual neuronet. Logic also needs to be applied to generate code, change tests, make changes, test, and debug code, in precise, natural language.
+5. Lucian CI/CD finds code using logic, in and between predicates. I need Prolog because it produces cognitive code. I need Detlog because it combines the syntax of Prolog with even greater simplicity of fewer compiler instructions. While a(1). A(2). Becomes a([1,2]).
+6. In detlog, clauses remain clauses and are collected by findall rather than being converted to a list by the converter, allowing them to be processed by higher-order algorithms. Member with findall of spliced output, abstracted out by the converter. Detlog is the only way to run Prolog on an Apple IIe. Detlog simulates cuts. Cut multiplication. Context-Free Grammar Generator grammars, maths.
+7. Cut in the member choice point. End of pred. Cut object hamlet or integration multiplication in congl. Mnn and logic. Integration. Sane.
+8. Detlog comments to show findall trace. Detlog allows examination of nondeterminism through the deterministic splice predicate. Logic in member cps allows subterm indexing and looping through them. Logic is like neuronet content, a single starlog command to produce output. Neuronets might optimise logic by skipping B in transitivity, for example, A to B, B to C, gives A to C. Perhaps delete the h1a line.
+9. Include(‘./Philosophy/Spec to Algorithm/spec_to_algorithm.pl’). Delete. Writeln(Out). Or is it?
+10. Writeln(G2). Include a query with the algorithm. H1a helps uncover the meaning of arguments for a topic through spelling and shows how to write a mind-mapping algorithm. Detlog. Assertz. Recompile new preds, x.
+11. Instead, place in structures if data or algs. Higher-order programming. Recompile the X chain command. Mnns. Mnns are just the algorithm; others optimise and draw self-evident inferences using nns or mnns aimed at laws, methodology levels, and domains. Process command terms and run commands (higher-order programming) by simulating or transitively predicting them.
+12. Flatten hierarchies of preds. Flatten higher-order programming hierarchies to Apple iie chain command to use less memory. Oliver Tree sim. Derivy means “something generated from something else. Proofs do not always correspond to algorithms. Proofs are algorithms with types.
+13. Non-classical logic and detlog. Properties of spliced branches may be possible/from one/several/searched/operated on branches, or necessary/from all/mapped/collected/processed branches. Mnns may select from possible spliced data before computing, even deferring splicing in case an output may not require computation. Eg of skipping splices in detlog with mnns: If 1 appears with a,b more often, check 1’s first. MNNs skip and operate on splices. Yes.
+14. In your framework, one of the main purposes of an MNN could be to avoid unnecessary branch expansion by operating directly on splices. Other operations. Find invariant. Mnns only have invariants; they can compute variants based on data. Flatten predicate hierarchies by treating dependent variables as indices. Operate on data in topological graph slices, not data structures.
+15. To find the invariant not data ops. Then, manipulate and… the invariant levels (heuristic logic). Prioritise, think of aims, think of the world and logic and … when rewriting rules. I am researching the idea of “any heuristic” to choose data to splice from nondeterministic predicates in my new Detlog programming language. Freedom of expression (connecting anything effortlessly) is the required mathematical standard. To also achieve the correct standard for the simulation, one needs working object science simulations for noninvasive and legal DevOps moves.
+16. Prolog. N accessible from nd to d loop. Neurosplice takes data and splices it by interpreting it. It may also involve selectively splicing the data. Cuten (sic) interpreter optimises splices. It also debugs it.
+17. Neurosplice takes interprets. In addition to syntactic and semantic compression, Prolog compresses lines, predicates, algorithms, content, and other dimensions using sentence specs to specify code. Detlog memory problem solved by splicing the data in segments, forgetting memory used by commands with or without output and reusing the same commands, predicates and algorithms but with different data flow in memory. This is a manifestation of quantum memory. Rather than a nondeterministic engine that processes predicates one at a time, Detlog has a deterministic engine that treats predicates of the same name and arity as “predicate 1 with that name and arity”, then \"predicate 2.\"  and so on.
+18. Member converted to member_cp collects these predicates or rules. Object Hamlet - Positive outcome of Hamlet with positive objects instead of people. Detlog features include splice-predicate optimisation, combined splice, selective splice, neurosplice, and conversion to maplist, foldr, and Starlog. Splice might be represented in the final code (if it is clearer than member and cut), but subterm indexing and subterm index looping might be implemented as compiler-only optimisations because they sacrifice cognitive readability. Editor tools should make it easy to quickly convert between member and cut, and between splice and compare forms, and to edit subterm indexing and subterm index looping forms. Triangulated references (to two sources instead of one) should be recorded to prevent hallucinated sources.
+19. Convert a philosophy sentence to data, then use the algorithm with Spec to Algorithm. Use this instead of Grammar Logic h1. Convert a philosophical sentence to data. Language Prolog or drill down using ontologies. Aphors, e.g., small white round tablet, or things that you would describe in an everyday manner. Ashwagandha.
+20. I tested the code as part of DevOps on Apple IIe. On the Apple IIe, I coded in Detlog (and its converter), used DevOps, and generated code with a code-generator chatbot. The chatbot also explained algorithms, combined specs to generate algorithms, wrote algorithm inputs and outputs, queried chats, generated possible new algorithm ideas, and maintained businesses. The chatbot also controlled bash and Prolog to run, test and debug algorithms and generate data. Files were accessed through a sandbox to protect user data. The Apple IIe could produce and play MIDI files.
+21. A low-memory (possibly) expecting, fast, fast storage, high-resolution, manual colour version of the Apple IIe produced movies, performed special effects, used a chatbot to oversee production, including sound, inspired writing and documenting Philosophy and Computing Talent Search projects, and demanded highly efficient algorithms. I used the Apple IIe to help with acting, pedagogy, writing scripts, writing positive psychiatry reports, history and science of the humanities, computing and mathematical physics research. I used the MBA to write and promote free programs, organise speaking engagements and workshops and plan to become a trillionaire, through space transport and future technologies. I wrote an algorithm to eliminate reverse in Prolog when possible, by using the context-free grammar, exhausting last-to-nth-last recursive clause computations, optimised by processing the maximum new types input in that order not done anywhere else, using computer science methodologies such as state machines, using descriptions to use methodologies using sentences and algorithms, using initiative to run algorithms when needed or suggesting recent or new methodologies sources, and using pre-written grammars and predicates (but finding predicates from recursive clause computations may prevent the need for this). Detlog handles multiple-choice points by splicing the outputs from the two branches as soon as possible. Detlog is still cognitive like Prolog, but its compiler sees the program as branch splicing, not backtracking.
+22. Detlog (possibly with a converter, a BASIC compiler, unification, and cut-loop exiters) can run comfortably on an Apple IIe. Detlog's memory usage is higher on the Apple IIe with BASIC than with 6502. Do the same operation from different clauses or the same characters from different strings once, perhaps using decision-tree compression. For example, a:-a1,a2. B:-a1,b2. Ab:-a1,ab2.
+23. Ab2:-a2. Ab2:-b2. The compiler compiles Detlog into 6502. Detlog is unlikely to be the most efficient implementation of full Prolog on an Apple IIe, because full Prolog requires general unification and backtracking. However, it could be one of the most efficient Prolog-derived logic languages for a large class of deterministic and semi-deterministic programs, especially if it combines direct 6502 compilation, decision-tree compression, and elimination of runtime choice points. For programs in relation to Loop2 and PLOP—decision trees, classifiers, CFG/DCG-style parsing, symbolic transformations, specification-to-algorithm generation, and deterministic splicing—Detlog could be among the most efficient Prolog-like systems feasible on an Apple IIe.
+24. A deterministic language with the syntax of Prolog without cuts, but a compiler that compiles to C and findall that converts to deterministic loops, where instead of cuts, programmers eliminate unnecessary cuts, convert cuts to if-then statements, exiting loops called Detlog or BASIClog. It doesn’t have backtracking; instead, it converts free choice points into loops and, if they are in separate branches, it splices the output from the two branches at the first available opportunity. For example: C:-a(A),b(B). A(A):-member(A,[1,2]). B(B):-member(B,[3,4]).
+25. Which gives: A = 1. B = 3 ; A = 1. B = 4 ; A = 2.
+26. B = 3 ; A = 2. B = 4. Becomes: C:-a(A),b(B),splice([A,B],C). A(A):-member_cp(A,[1,2]).
+27. B(B):-member_cp(B,[3,4]). Member_cp(choice point(D),D). Splice(Template, Result) :- Expand_cp_template(Template, Result). Expand_cp_template([], [[]]). Expand_cp_template([choice point(Choices)|Rest], Result) :-
+28. Expand_cp_template(Rest, RestResults), Findall([Choice|R], ( member(Choice, Choices), Member(R, RestResults), Result). Expand_cp_template([X|Rest], Result) :-
+29. X = choice point(_). Expand_cp_template(Rest, RestResults), Findall([X|R], Member(R, RestResults), Result). Which gives:
+30. C=[[1,3],[1,4],[2,3],[2,4]]. The compiler converts member to member_cp and inserts a splice. Change splice to use determinism without findall instead of findall, and then apply member to the results to give A = 1. B = 3 ; A = 1. B = 4 ;
+31. A = 2. B = 3 ; A = 2. B = 4. Remember to adjust splice(X,Y) so X can have n A,B. Use a deterministic Cartesian-product builder, then member/2 only at the end:
+32. A(A) :-. Member_cp(A, [1,2]). B(B) :- Member_cp(B, [3,4]). D(D) :- Member_cp(D, [5,6]).
+33. E(E) :-. Member_cp(E, [7,8]). Member_cp(choice point(D), D). Splice(Xs, Ys) :- Splice_rows(Xs, [[]], Ys). Splice_rows([], Acc, Acc).
+34. Splice_rows([choice point(Choices)|Rest], Acc, Ys) :- Extend_rows(Acc, Choices, Acc1), Splice_rows(Rest, Acc1, Ys). Splice_rows([X|Rest], Acc, Ys) :- X = choice point(_), Extend_rows(Acc, [X], Acc1),
+35. Splice_rows(Rest, Acc1, Ys). Extend_rows([], _, []). Extend_rows([Row|Rows], Choices, Out) :- Extend_one_row(Row, Choices, Out1). Extend_rows(Rows, Choices, Out2), Append(Out1, Out2, Out).
+36. Extend_one_row(_, [], []). Extend_one_row(Row, [Choice|Choices], [[Choice|Row]|Out]) :- Extend_one_row(Row, Choices, Out). For corrected order: C(A, B,D,E) :- A(A0).
+37. B(B0), D(D0), E(E0), Splice([A0, B0,D0,E0], Rows0), Maplist(reverse, Rows0, Rows), Member([A, B,D,E], Rows).
+38. Result: C(A, B,D). A = 1. B = 3. D = 5 ; A = 1.
+39. B = 3. D = 6 ; A = 1. B = 4. D = 5 ; A = 1.
+40. B = 4. D = 6 ; A = 2. B = 3. D = 5 ; A = 2.
+41. B = 3. D = 6 ; A = 2. B = 4. D = 5 ; A = 2.
+42. B = 4. D = 6 ; This generalises to any arity. Splice([A0,B0,C0,D0], Rows). Member([A,B,C,D], Rows). Use quantum object detectors and modifiers to prevent problems revealed by linear algebra, single lines of information about the universe, linguistic imprecision, natural disasters, lost objects, and LLMs or vehicles going down.
+
+In Prolog, the cut (!) means "commit to the choices made so far." For
+
+a :- b, !, c.
+
+the execution is:
+
+Try b.
+If b fails, the whole predicate a fails.
+If b succeeds, execute !.
+After !, Prolog discards all alternative solutions for b and all later clauses of a.
+Execute c.
+If c succeeds, a succeeds.
+If c fails, a fails completely—Prolog does not go back and try another solution of b or another clause of a.
+In Detlog
+
+Since your proposed Detlog removes backtracking and replaces it with deterministic loops and splicing, a cut is largely unnecessary because there are no choicepoints to prune.
+
+A compiler could translate
+
+a :- b, !, c.
+
+into something conceptually like
+
+a :-
+    b_once(Result),
+    ( Result = success ->
+        c
+    ;
+        fail
+    ).
+
+or even
+
+a :-
+    if b then c else fail.
+
+where b is executed once and no alternative branches are retained.
+
+If b is a generator, e.g.
+
+b(1).
+b(2).
+b(3).
+
+then Detlog has to decide what the intended semantics are.
+
+Option 1: First solution only
+a(X) :-
+    first(b(X)),
+    c(X).
+
+This matches the effect of the cut.
+
+Option 2: Explicit splice
+
+If the programmer wanted all solutions,
+
+a(X) :-
+    splice(b(X),Xs),
+    ...
+
+then there would be no cut.
+
+Thus the compiler could interpret
+
+!, first(), splice()
+
+as three different deterministic operators.
+
+Difficult cases
+
+There are situations where automatic conversion becomes much harder.
+
+1. Cuts inside recursion
+p :-
+    q,
+    !,
+    p.
+
+The compiler has to determine exactly what the cut is preventing. This is still possible but requires control-flow analysis.
+
+2. Cuts that distinguish clauses
+a :-
+    b,
+    !,
+    c.
+
+a :-
+    d.
+
+Here the cut prevents the second clause being tried.
+
+Detlog could compile this as
+
+if b then
+    c
+else
+    d.
+
+provided it can recognise this pattern.
+
+3. Cuts inside disjunctions
+a :-
+    (b ; c),
+    !,
+    d.
+
+Now the cut commits to whichever branch succeeded first.
+
+Detlog would have to transform this into a deterministic state machine.
+
+4. Meta-predicates
+call(P),
+!,
+call(Q).
+
+Since P is not known until runtime, the compiler cannot easily determine which alternatives would have existed.
+
+5. Dynamically changing programs
+assert(...),
+retract(...),
+!,
+...
+
+If the program changes while running, compile-time conversion becomes much harder.
+
+6. Cuts depending on side effects
+write(X),
+!,
+read(Y).
+
+Reordering or parallelising execution becomes unsafe because observable behaviour matters.
+
+A possible Detlog rule
+
+One approach is to restrict cuts to a small number of deterministic constructs:
+
+Prolog	Detlog
+!, after deterministic predicate	Remove entirely
+!, after generator	first(...)
+Clause-selection cut	if...then...else
+Complex cut	Leave as explicit first or require programmer annotation
+
+This keeps the language deterministic while preserving most useful cut behaviour.
+
+Are there programs that cannot be converted?
+
+Yes. Programs that use cuts as general control flow, especially in combination with dynamic predicates, meta-calls, or side effects, may not admit a simple deterministic translation without changing their semantics.
+
+However, a large class of Prolog programs—including parsers, symbolic algorithms, theorem provers, and many expert systems—use cuts in disciplined ways (for first-match selection or efficiency). Those patterns can often be converted mechanically into deterministic if, first, or explicit splicing constructs.
+
+This suggests a practical design for Detlog: treat the cut not as a primitive operation, but as syntactic sugar for one of a small set of explicit deterministic operators. That makes the intended control flow visible and allows the compiler to optimise or parallelise execution much more reliably.
+
+cut needs to be simplified to deterministic logic to meet robot and real time requirements
+
+Yes. For robots and real-time systems, ! should not remain a vague Prolog control operator. In Detlog it should be compiled into explicit deterministic logic.
+
+A good rule:
+
+a :- b, !, c.
+
+becomes:
+
+a :-
+    if_once(b,
+        c,
+        fail).
+
+Meaning:
+
+Run b deterministically once.
+If b succeeds, commit to c.
+If b fails, fail.
+Do not leave hidden alternatives.
+
+For multiple clauses:
+
+a :- b, !, c.
+a :- d.
+
+becomes:
+
+a :-
+    if b then
+        c
+    else
+        d.
+
+So the cut is simplified into a priority decision tree:
+
+test b
+ ├─ success → run c
+ └─ failure → run d
+
+For Detlog, I’d treat cuts as compile-time sugar for only a few safe forms:
+
+! after a test       → if/then/else
+! after a generator  → first solution only
+! after a guard      → committed clause
+complex !            → rejected or requires annotation
+
+The robot-safe version is:
+
+a :-
+    guard(b),
+    action(c).
+
+or more explicitly:
+
+a :-
+    decide(b, yes),
+    execute(c).
+
+So Detlog should replace cut with:
+
+guards
+decision trees
+first-solution operators
+state-machine transitions
+explicit failure branches
+
+The rule should be:
+
+No hidden backtracking.
+No implicit pruning.
+No runtime choicepoint surprises.
+Every cut must compile to deterministic control flow.
+
+Cases too complex for automatic simplification should fail at compile time with messages like:
+
+Error: cut depends on meta-call.
+Error: cut crosses dynamic predicate boundary.
+Error: cut depends on side-effect order.
+Error: cut inside ambiguous disjunction; use explicit first/if/splice.
+
+So yes: for robot and real-time requirements, Detlog should not “support cut” as Prolog does. It should decompile cut into deterministic logic, and reject anything whose timing or behaviour cannot be guaranteed.
+
+Try harder.
+Thought for a couple of seconds
+
+Yes — stronger version:
+
+Detlog should treat ! as a compile-time proof obligation, not as an operator.
+
+a :- b, !, c.
+
+should be analysed as:
+
+To run a:
+1. test/produce b
+2. once b has committed, forbid all alternatives before the cut
+3. run c
+4. if c fails, do not retry b
+
+So Detlog should rewrite it to a deterministic automaton:
+
+a :-
+    b_det(Status, State1),
+    cut_commit(Status, State1, State2),
+    c_det(State2).
+
+But cut_commit should disappear after compilation. Final code should be closer to:
+
+a :-
+    b_first(BResult),
+    (
+        BResult = success(BState)
+    ->
+        c_from(BState)
+    ;
+        fail
+    ).
+
+For several clauses:
+
+a :- b, !, c.
+a :- d.
+a :- e.
+
+Detlog should compile this as a priority decision tree:
+
+a :-
+    b_test(B),
+    (
+        B = yes ->
+            c
+    ;
+        d_or_e
+    ).
+
+where:
+
+d_or_e :-
+    d
+;
+    e.
+
+but in Detlog even d_or_e must be made deterministic:
+
+d_or_e :-
+    first_success([d,e]).
+
+or, better:
+
+d_or_e :-
+    decision([
+        case(d_guard, d_body),
+        case(e_guard, e_body)
+    ]).
+
+The important part is that ! becomes clause commitment:
+
+Before cut: search/guard region.
+At cut: commit point.
+After cut: action region.
+Later clauses: else-region.
+
+So:
+
+a :- b, !, c.
+a :- d.
+
+means:
+
+if b succeeds at least once:
+    run c using the first committed b-state
+else:
+    run d
+
+Not:
+
+try all possibilities of b and c
+
+For robot logic, that distinction matters because timing must be bounded.
+
+A better Detlog internal form would be:
+
+a :-
+    commit(
+        guard: b,
+        then:  c,
+        else:  d
+    ).
+
+So the cut pattern becomes:
+
+Head :- Guard, !, Body.
+Head :- Else.
+
+rewritten to:
+
+Head :-
+    if_commit(Guard, Body, Else).
+
+For your example:
+
+a :- b, !, c.
+
+with no later clause, it becomes:
+
+a :-
+    if_commit(b, c, fail).
+
+Now, cases too complex are not merely “hard”. They divide into classes.
+
+Class 1: Safe deterministic cut
+a :- ground(X), !, c(X).
+a :- d(X).
+
+This is safe:
+
+a :-
+    if ground(X) then c(X) else d(X).
+Class 2: Generator cut
+a(X) :- member(X,[1,2,3]), !, c(X).
+
+This means:
+
+take first X only
+
+Detlog:
+
+a(X) :-
+    first(member(X,[1,2,3]), X),
+    c(X).
+
+or lower-level:
+
+a(X) :-
+    X = 1,
+    c(1).
+
+if the list is known.
+
+Class 3: Red cut
+
+A red cut changes meaning:
+
+max(X,Y,X) :- X >= Y, !.
+max(X,Y,Y).
+
+This can be made deterministic:
+
+max(X,Y,Z) :-
+    if X >= Y then
+        Z = X
+    else
+        Z = Y.
+
+That is robot-safe.
+
+Class 4: Unsafe meta-cut
+a(P,Q) :- call(P), !, call(Q).
+
+This is unsafe unless P and Q have declared modes, cost bounds, and determinism.
+
+Detlog should reject it unless annotated:
+
+:- det_predicate(P, semidet, max_time(5)).
+Class 5: Side-effect cut
+a :- read(X), !, move_robot(X).
+
+This is not just logic. It affects the world.
+
+Detlog should force an explicit state-machine form:
+
+a(State0, State2) :-
+    read_sensor(State0, X, State1),
+    commit,
+    move_robot(X, State1, State2).
+
+The cut disappears because the state transition itself is the commitment.
+
+Better principle
+
+For Detlog:
+
+A cut is legal only if the compiler can replace it with:
+1. if-then-else
+2. first-solution
+3. committed clause selection
+4. bounded state transition
+5. explicit failure
+
+Otherwise it is illegal.
+
+So Detlog should not ask:
+
+How do we execute cut?
+
+It should ask:
+
+What deterministic structure was the programmer trying to express?
+
+Then compile to that.
+
+Best final semantics:
+
+cut = boundary between guard search and committed action
+
+For robots:
+
+Guard phase may inspect possibilities.
+Commit phase chooses one.
+Action phase must be deterministic, bounded, and state-safe.
+
+So:
+
+a :- b, !, c.
+
+really becomes:
+
+a :-
+    choose_first_solution(b, Choice),
+    commit(Choice),
+    run_deterministically(c, Choice).
+
+or simpler:
+
+a :-
+    if_commit(b, c, fail).
+
+That is the Detlog version.

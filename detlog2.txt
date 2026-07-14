@@ -1,0 +1,496 @@
+Detlog qa
+
+1. Project scope
+Should the first version be:
+a Detlog-to-Prolog source converter,
+a Detlog interpreter,
+a Detlog-to-C compiler,
+a Detlog-to-6502 compiler,
+or a staged system containing several of these?
+Should the initial implementation target SWI-Prolog only, or remain portable to systems such as Scryer Prolog?
+
+It should be a converter that works in the SWI-Prolog interpreter.
+
+Is Apple IIe/6502 support required in the first release, or should the architecture merely prepare for it?
+
+No, just basic Detlog.
+
+Should BASIClog be an alternative name for Detlog, a separate backend, or omitted?
+
+Omitted
+
+2. Detlog language definition
+Should Detlog accept ordinary Prolog syntax and reject unsupported constructs, or define its own restricted grammar?
+
+Detlog should accept ordinary Prolog syntax and reject unsupported constructs.
+
+Should facts remain separate clauses internally, for example:
+a(1).
+a(2).
+
+or may the compiler combine them into:
+
+a(cp([1,2])).
+
+Leave them as a(1).
+a(2).
+for member_cp.
+
+Should member/2 always be converted to member_cp/2, or only when its nondeterminism contributes to a later splice?
+
+Only when its nondeterminism contributes to a later splice.
+
+Which choice representation should be canonical?
+cp([1,2])
+
+or:
+
+choice_point([1,2])
+
+cp([1,2])
+
+Should deterministic predicates be required to return at most one result, while semideterministic predicates may succeed or fail once?
+
+Yes.
+
+Should ordinary disjunction (A ; B) be:
+rejected,
+converted to a deterministic decision,
+converted to a choice packet,
+or allowed only with annotations?
+
+Be converted to a choice packet,
+
+3. Splice semantics
+What should the canonical interface be?
+splice(+ChoiceTerms, -Rows)
+Should this example be the required semantics?
+splice(
+    [cp([1,2]), cp([3,4])],
+    [[1,3],[1,4],[2,3],[2,4]]
+).
+Yes
+Should splice/2 accept mixtures of fixed values and choice packets?
+Yes
+splice([fixed, cp([1,2]), x], Rows).
+Should empty choice packets cause:
+an empty result,
+predicate failure,
+or a compile-time error?
+
+a compile-time error, unless I'm missing something
+
+Should nested choice packets be supported?
+cp([1, cp([2,3])])
+Yes.
+Must splice/2 preserve left-to-right Prolog enumeration order?
+Yes.
+Should splice materialise every row, or should it support a streaming form to avoid storing the full Cartesian product?
+A streaming form
+Should there be separate forms such as:
+splice_collect/2.
+splice_each/2.
+splice_first/2.
+splice_select/3.
+Yes.
+Should member/2 at the end be allowed to enumerate splice rows, even though Detlog otherwise removes backtracking?
+Try to remove unnecessary member/2, findall pairs in algorithms.
+Is “splice early, enumerate late” a strict compiler rule or an optimisation heuristic?
+A strict compiler rule
+4. Cut conversion
+Should the source language accept !, provided every cut is eliminated during compilation?
+No.
+Should this transformation be mandatory?
+a :- b, !, c.
+a :- d.
+
+to:
+
+a :-
+    if_commit(b, c, d).
+Yes, please document these kinds of predicates.
+Which explicit deterministic constructs should Detlog provide?
+if_commit/3
+first/2
+once_det/1
+guard/1
+decision/2
+loop_exit/1
+
+All of them.
+
+Should a cut after a known finite generator mean “take the first generated value”?
+
+Yes.
+
+Should cuts involving call/1, dynamic predicates, side effects, or ambiguous disjunctions be rejected?
+
+Yes.
+
+Should the compiler classify cuts as:
+removable green cuts,
+deterministic clause-selection cuts,
+first-solution cuts,
+state-transition cuts,
+unsupported cuts?
+
+Yes.
+
+For robot and real-time use, should every committed action be required to have a declared execution-time bound?
+
+No.
+
+5. Loops and nondeterminism
+Which nondeterministic constructs must be converted into deterministic loops?
+member/2
+between/3
+findall/3
+bagof/3
+setof/3
+multiple clauses
+DCG alternatives
+recursion over lists
+
+All of them
+
+Should findall/3 remain legal in source code but be removed from generated code?
+
+Yes.
+
+Should Loop2 be implemented inside this repository, imported as a dependency, or represented as a later optimisation pass?
+
+imported as a dependency
+
+Should the compiler recognise independent generators and compile them directly into nested loops instead of first constructing choice packets?
+
+compile them directly into nested loops
+
+Should it automatically choose between:
+nested loops,
+splice tables,
+streaming enumeration,
+decision trees?
+
+Yes.
+
+What should happen when a choice space is too large to materialise?
+
+Use Piglog to partition, graphise and put together data from partitions.
+
+Should the compiler estimate Cartesian-product size before executing a splice?
+
+Yes, otherwise a compiler error if too large.
+
+6. PLOP and decision-tree optimisation
+Should PLOP be:
+integrated directly,
+called as an external optimiser,
+or represented by clearly defined optimisation interfaces?
+
+called as an external optimiser,
+
+Should common-prefix factoring be required?
+a :- a1, a2.
+b :- a1, b2.
+
+becoming conceptually:
+
+ab :-
+    a1,
+    ab2.
+
+ab2 :- a2.
+ab2 :- b2.
+
+Yes.
+
+Must the optimiser preserve the original public predicates a/0 and b/0, even if it merges their internal implementation?
+
+No.
+
+Should common suffixes also be factored?
+
+Yes.
+
+Should decision-tree compression operate across:
+clauses of one predicate,
+multiple predicates,
+modules,
+generated strings,
+DCG rules?
+
+All of them.
+
+Should optimisation be conservative unless equivalence is proved by tests or static analysis?
+
+Yes.
+
+Must every optimisation produce a human-readable explanation or transformation trace?
+
+If the user compiles the algorithm, they may specify whether to display the trace.
+
+7. Unification and data representation
+What level of unification is required initially?
+ground equality only,
+variables with simple terms,
+lists and structures,
+occurs-check,
+full Prolog unification?
+
+full Prolog unification
+
+Should unbound variables be permitted inside choice packets?
+
+No.
+
+Should attributed variables and constraints such as CLP(FD) be unsupported initially?
+
+Yes.
+
+Should strings use SWI-Prolog strings, atoms, character codes, or a backend-neutral representation?
+
+SWI-Prolog strings
+
+Should the compiler flatten terms into indexed tables for the 6502 backend?
+
+No.
+
+Should subterm indexing and subterm-index looping be visible Detlog constructs or compiler-only optimisations?
+
+visible Detlog constructs
+
+8. Recursion and termination
+Should general recursion be allowed, or only recursion that the compiler can prove corresponds to a deterministic loop?
+
+Yes.
+
+Must the compiler detect:
+nontermination,
+unbounded recursion,
+increasing term size,
+uncontrolled choice growth?
+
+Yes.
+
+Should tail recursion be converted automatically to loops?
+
+Yes.
+
+Should recursive DCGs be supported in the first version?
+
+Yes.
+
+Should every real-time predicate require a maximum recursion depth or iteration bound?
+
+No.
+
+9. Effects, state, and robotics
+Should the initial repository include robot-specific facilities, or only deterministic language foundations?
+
+Only deterministic language foundations
+
+Which effects must be modelled explicitly?
+I/O
+files
+timers
+sensors
+actuators
+networking
+assert/retract
+exceptions
+
+All of them
+
+Should state-changing predicates use explicit state threading?
+move_robot(Command, State0, State1).
+
+Yes.
+
+Should effectful predicates be forbidden before a choice is committed?
+Yes.
+Should the compiler prevent the reordering or parallel execution of side-effecting predicates?
+Yes.
+Should deadlines, priorities, and maximum runtimes be expressed through declarations?
+:- deadline(move_robot/3, 20_ms).
+:- determinism(move_robot/3, det).
+Yes, but document this in everyday language.
+What should happen when a deadline cannot be statically guaranteed: warning, compile error, or runtime watchdog?
+Nothing.
+10. Parallelisation
+Is Piglog-style parallel execution part of this repository or outside Detlog’s initial scope?
+Full Piglog is outside it.
+Should independent deterministic predicates be parallelised automatically?
+No.
+Should parallel execution be disabled by default for Apple IIe and enabled only on modern targets?
+N/A
+Should there be explicit modes such as:
+:- execution_mode(sequential).
+:- execution_mode(auto_parallel).
+:- execution_mode(real_time).
+No
+Must parallel branches be forbidden from sharing mutable state?
+N/A
+11. Compiler pipeline
+Is this proposed pipeline correct?
+Parse Prolog
+→ analyse modes and determinism
+→ classify cuts
+→ identify choicepoints
+→ convert choices to loops or choice packets
+→ insert splices
+→ factor common clause structure
+→ remove findall/backtracking
+→ verify deterministic intermediate form
+→ emit Prolog, C, BASIC, or 6502
+
+X
+Parse Prolog
+→ analyse modes and determinism
+→ classify cuts
+→ identify choicepoints
+→ convert choices to loops or choice packets
+→ insert splices
+→ factor common clause structure
+→ remove findall/backtracking
+→ verify deterministic intermediate form
+→ emit Prolog
+
+Should the compiler expose each intermediate representation for debugging?
+
+No.
+
+Should generated predicates retain source-location mappings?
+
+Yes.
+
+Should the converter rewrite source files, or generate separate files without modifying the originals?
+
+Run it straight away unless the user requests the source code.
+
+Should the system support incremental recompilation when only one predicate changes?
+
+Yes.
+
+Should Lucian CI/CD integration be included as a requirement now?
+
+No.
+
+12. Outputs and backends
+Which backend should be implemented first?
+deterministic SWI-Prolog,
+C,
+Applesoft BASIC,
+6502 assembly?
+
+Just SWI-Prolog
+
+Should generated Prolog contain no:
+cuts,
+disjunctions,
+findall/3,
+dynamic predicates,
+hidden choicepoints?
+
+Yes.
+
+Should generated C avoid heap allocation during deterministic loops?
+
+N/A
+
+Which 6502 assembler should generated output target?
+
+N/A
+
+Should the Apple IIe runtime assume 64 KB, 128 KB, or configurable memory?
+
+N/A
+
+Should floppy overlays and paged modules be part of the first 6502 specification?
+
+N/A
+
+13. Errors and diagnostics
+Should unsupported Prolog constructs produce hard errors rather than silently falling back to ordinary Prolog?
+
+No.
+
+What information should diagnostics include?
+predicate,
+clause,
+source line,
+unsupported construct,
+suggested Detlog replacement,
+determinism explanation?
+
+All of the above.
+
+Should the compiler report inferred modes and determinism?
+
+If requested
+
+a/1: multi → converted to choice packet
+c/2: multi → deterministic splice + final enumeration
+Should it warn about very large splice products before execution?
+Yes.
+Should failed proof obligations prevent code generation?
+No.
+14. Testing requirements
+Should semantic equivalence be tested by comparing the original Prolog answers with the Detlog-generated answers?
+Yes.
+
+Must answer order also match, or only the answer set?
+Yes.
+Should tests include:
+cuts,
+multiple clauses,
+nested generators,
+recursion,
+DCGs,
+strings,
+side effects,
+empty choices,
+large splice products,
+common-prefix factoring?
+Yes
+
+
+Should generated code be tested to confirm it leaves no unintended choicepoints using deterministic/1 or equivalent SWI-Prolog facilities?
+Yes.
+Should performance and memory benchmarks be required?
+Yes.
+Should Apple IIe tests run in an emulator as part of GitHub Actions?
+No.
+The point of Detlog is to prepare for better examination and have greater efficiency in preparation for MNNS.
+15. GitHub Copilot Agent workflow
+Should the requirements instruct Copilot Agent to work in explicit stages and repeat each stage until all tests pass?
+
+repeat each stage until all tests pass
+
+Should every stage require:
+implementation,
+unit tests,
+integration tests,
+documentation,
+self-review,
+rerunning the full suite?
+Yes
+Should Copilot be forbidden from changing language semantics merely to make tests pass?
+Yes.
+Should it update a progress document after each stage?
+Yes
+Should each stage be delivered as a separate commit?
+No
+Should Copilot open issues for unsupported constructs rather than implementing speculative behaviour?
+Yes.
+Should the agent be permitted to add dependencies, or require approval through a dependency policy?
+add dependencies
+Do you want the final requirements written as:
+one PROGRAM_REQUIREMENTS.md,
+GitHub issues and milestones,
+a Copilot Agent prompt,
+test specifications,
+or all four?
+PROGRAM_REQUIREMENTS.md
+
+The most important decisions are the first backend, exact splice semantics, permitted Prolog subset, cut-conversion rules, and whether final member/2 enumeration is considered acceptable Detlog behaviour.
+
