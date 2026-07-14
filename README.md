@@ -25,7 +25,7 @@ sed -n '1,7p' generated.pl
 swipl -q -g "use_module(prolog/detlog), detlog_compile('test/fixtures/sample_program.pl', [modes(true), fallback(silent)]), halt."
 ```
 
-### Inspect fallback diagnostics for predicates Detlog keeps conservative
+### Inspect fallback diagnostics for predicates Detlog keeps as conservative fallbacks
 
 ```bash
 swipl -q -g "use_module(prolog/detlog), use_module(prolog/detlog_diagnostics), detlog_compile('test/fixtures/sample_program.pl', [fallback(silent)]), diagnostics(Ds), writeln(Ds), halt."
