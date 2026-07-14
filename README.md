@@ -1,6 +1,6 @@
 # detlog
 
-Detlog is an in-SWI-Prolog source converter for examining and reducing hidden nondeterminism while preserving ordinary Prolog semantics.
+Detlog is an in-SWI-Prolog source converter for examining and reducing hidden nondeterminism while preserving ordinary Prolog semantics. It attempts to replace choicepoints with the splice predicate to combine outputs of nondeterministic predicates and convert cut into predicates.
 
 ## REPL-first workflow
 
