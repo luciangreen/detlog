@@ -15,6 +15,12 @@ test(code_output_file) :-
     close(Stream),
     detlog_compile(File, [code(OutFile)]),
     exists_file(OutFile),
+    setup_call_cleanup(
+        open(OutFile, read, ReadStream),
+        read_string(ReadStream, _, Code),
+        close(ReadStream)
+    ),
+    sub_string(Code, _, _, _, "det_sum(A,B) :-"),
     delete_file(OutFile).
 
 :- end_tests(detlog_repl).
