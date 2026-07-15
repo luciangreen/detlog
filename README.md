@@ -14,7 +14,7 @@ a(X),
 b(Y),
 c(X,Y).
 
-    relying on nested choicepoints, Detlog can conceptually produce the outputs of a/1 and b/1, splice them into deterministic structures, and continue from there.
+* relying on nested choicepoints, Detlog can conceptually produce the outputs of a/1 and b/1, splice them into deterministic structures, and continue from there.
 3. Convert many uses of cut (!) into deterministic predicates or control structures.
     * The intention is not merely to remove !, but to replace its operational effect with explicit deterministic logic.
     * Typical cases include:
