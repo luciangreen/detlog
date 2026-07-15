@@ -1,6 +1,33 @@
 # detlog
 
-Detlog is an in-SWI-Prolog source converter for examining and reducing hidden nondeterminism while preserving ordinary Prolog semantics. It attempts to replace choicepoints with the splice predicate to combine outputs of nondeterministic predicates and convert cut into predicates.
+Detlog is an in-SWI-Prolog source converter for examining and reducing hidden nondeterminism while preserving ordinary Prolog semantics.
+
+Detlog appears to aim to:
+
+1. Replace backtracking choicepoints with deterministic execution where possible.
+    * Instead of repeatedly exploring alternatives through Prolog’s choicepoint mechanism, Detlog collects or computes the required alternatives deterministically.
+2. Use a splice-style operation to combine outputs of nondeterministic predicates.
+    * Rather than repeatedly calling predicates through backtracking, the idea is to materialise or combine their outputs once and then iterate over the combined result deterministically.
+    * For example, instead of
+
+a(X),
+b(Y),
+c(X,Y).
+
+        relying on nested choicepoints, Detlog can conceptually produce the outputs of a/1 and b/1, splice them into deterministic structures, and continue from there.
+3. Convert many uses of cut (!) into deterministic predicates or control structures.
+    * The intention is not merely to remove !, but to replace its operational effect with explicit deterministic logic.
+    * Typical cases include:
+        * if-then-else
+        * deterministic comparison predicates
+        * loop termination predicates
+        * explicit branch-selection predicates
+    * This makes control flow more declarative and easier for a compiler to analyse.
+
+There are, however, two caveats.
+
+* Not every choicepoint can necessarily be replaced. Some Prolog programs depend on unrestricted backtracking or dynamic control flow that may require retaining Prolog semantics or generating more specialised deterministic code.
+* Not every cut has a simple deterministic equivalent. Green cuts (used only for efficiency) are generally much easier to eliminate than red cuts (whose removal changes the program’s meaning). SWI-Prolog itself treats cuts as a low-level control mechanism rather than something that should normally be reimplemented directly.
 
 ## REPL-first workflow
 
