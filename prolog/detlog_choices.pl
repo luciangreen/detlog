@@ -6,15 +6,14 @@
 cp(Choices) :-
     validate_cp(Choices).
 
-validate_cp(cp(_)) :- !.
+validate_cp(cp(_)).
 validate_cp(Choices) :-
-    is_list(Choices),
-    !.
-validate_cp(Choices) :-
-    throw(error(type_error(choice_packet, Choices), _)).
+    (   is_list(Choices)
+    ->  true
+    ;   throw(error(type_error(choice_packet, Choices), _))
+    ).
 
 normalize_cp(cp(Choices), Normalized) :-
-    !,
     normalize_cp(Choices, Normalized).
 normalize_cp(Choices, Normalized) :-
     must_be(list, Choices),
@@ -22,11 +21,9 @@ normalize_cp(Choices, Normalized) :-
     append(Items, Normalized).
 
 normalize_item(cp(Nested), Flat) :-
-    !,
     normalize_cp(Nested, Flat).
 normalize_item(Item, [Item]).
 
 member_cp(Value, Packet) :-
     normalize_cp(Packet, Items),
     member(Value, Items).
-

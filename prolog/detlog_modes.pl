@@ -31,9 +31,11 @@ mode_of_predicate(Clauses, Name/Arity, mode(ArgModes)) :-
     maplist(arg_mode(Heads), Args, ArgModes).
 
 arg_mode(Heads, Arg, in) :-
-    ground(Arg),
-    !,
-    Heads \= [].
+    (   ground(Arg),
+        Heads \= []
+    ->  true
+    ;   fail
+    ).
 arg_mode(_, _, inout).
 
 determinism_of_predicate(Clauses, Name/Arity, Det) :-
@@ -56,11 +58,14 @@ determinism_of_predicate(Clauses, Name/Arity, Det) :-
 
 contains_choicepoint(Bodies) :-
     member(Body, Bodies),
-    (   sub_term((_;_), Body)
-    ;   sub_term(!, Body)
-    ;   sub_term(findall(_, _, _), Body)
-    ;   sub_term(bagof(_, _, _), Body)
-    ;   sub_term(setof(_, _, _), Body)
-    ;   sub_term(member(_, _), Body)
-    ;   sub_term(between(_, _, _), Body)
+    (   sub_term(Term, Body),
+        nonvar(Term),
+        (   Term = (_;_)
+        ;   Term == !
+        ;   Term = findall(_, _, _)
+        ;   Term = bagof(_, _, _)
+        ;   Term = setof(_, _, _)
+        ;   Term = member(_, _)
+        ;   Term = between(_, _, _)
+        )
     ).

@@ -10,6 +10,7 @@
 
 :- use_module(library(lists)).
 :- use_module(detlog_choices).
+:- use_module(detlog_runtime).
 
 splice([], [[]]).
 splice([Packet|Rest], Rows) :-
@@ -27,8 +28,7 @@ splice_each(PacketSpecs, Row) :-
     member(Row, Rows).
 
 splice_first(PacketSpecs, Row) :-
-    splice_each(PacketSpecs, Row),
-    !.
+    once_det(splice_each(PacketSpecs, Row)).
 
 splice_select(PacketSpecs, Selector, Value) :-
     splice_each(PacketSpecs, Row),

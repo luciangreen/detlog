@@ -72,7 +72,9 @@ collapse_predicates([PI-Line|Rest], [source_predicate{predicate:PI, line:Line}|T
     skip_same_predicate(Rest, PI, Remaining),
     collapse_predicates(Remaining, Tail).
 
-skip_same_predicate([PI-_|Rest], PI, Remaining) :-
-    !,
-    skip_same_predicate(Rest, PI, Remaining).
-skip_same_predicate(Rest, _, Rest).
+skip_same_predicate(List, PI, Remaining) :-
+    (   List = [Key-_|Rest],
+        Key == PI
+    ->  skip_same_predicate(Rest, PI, Remaining)
+    ;   Remaining = List
+    ).

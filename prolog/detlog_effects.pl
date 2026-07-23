@@ -23,9 +23,11 @@ predicate_signature(Clauses, Name/Arity) :-
 effect_of_predicate(Clauses, Name/Arity, io) :-
     member(clause_info{head:Head, body:Body, line:_}, Clauses),
     functor(Head, Name, Arity),
-    contains_effect(Body),
-    !.
-effect_of_predicate(_, _, pure).
+    contains_effect(Body).
+effect_of_predicate(Clauses, Name/Arity, pure) :-
+    \+ (member(clause_info{head:Head, body:Body, line:_}, Clauses),
+        functor(Head, Name, Arity),
+        contains_effect(Body)).
 
 contains_effect(Body) :-
     sub_term(Goal, Body),
