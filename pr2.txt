@@ -1,0 +1,943 @@
+The repository does not yet fully support the requested cut-free converter architecture.
+
+At present:
+
+* detlog_cuts.pl uses operational cuts to commit to classifications.
+* detlog_codegen.pl also uses cuts when skipping directives and when classifying converted predicates.
+* The runtime provides decision/2, if_commit/3, first/2, once_det/1, and loop_exit/1, but several are currently thin wrappers around call/1, once/1, or list indexing rather than complete explicit Detlog control models.
+* Code generation presently creates wrappers that call the source predicates; it does not yet emit the full transformed cut-free predicate bodies envisaged by the requirements.
+
+The following requirements can be appended to PROGRAM_REQUIREMENTS.md.
+
+Additional Detlog GitHub Copilot Agent Prolog Program Requirements: Cut-Free Converter Implementation
+
+1. Objective
+
+Refactor and extend Detlog so that the Detlog implementation itself is written without operational uses of Prolog cut.
+
+This requirement applies to:
+
+prolog/detlog.pl
+prolog/detlog_analysis.pl
+prolog/detlog_cuts.pl
+prolog/detlog_codegen.pl
+prolog/detlog_choices.pl
+prolog/detlog_effects.pl
+prolog/detlog_loops.pl
+prolog/detlog_modes.pl
+prolog/detlog_reader.pl
+prolog/detlog_recursion.pl
+prolog/detlog_runtime.pl
+prolog/detlog_splice.pl
+prolog/adapters/*.pl
+
+The implementation may still read, inspect, classify, quote, print, and test source terms containing !/0.
+
+The implementation must not execute !/0 as an internal Detlog control mechanism.
+
+Allowed appearances of ! are limited to:
+
+1. source terms being analysed;
+2. quoted terms used in transformation rules;
+3. test fixtures containing source Prolog cuts;
+4. expected-output text;
+5. comments and documentation;
+6. assertions that verify generated code contains no cut.
+
+⸻
+
+2. Repository-Wide Cut-Free Invariant
+
+The following invariant is mandatory:
+
+The Detlog converter, analyser, runtime, code generator, cache, adapters,
+diagnostics, source mapper, and generated fully converted predicates must
+contain no operational invocation of !/0.
+
+A repository scanner must distinguish between:
+
+operational_cut
+quoted_source_cut
+test_fixture_cut
+documentation_cut
+comment_cut
+generated_text_cut
+
+Only operational_cut is prohibited.
+
+The scanner must parse Prolog terms rather than relying only on a textual search for !.
+
+Required command:
+
+?- detlog_verify_cut_free.
+
+Required successful output:
+
+Detlog implementation is operationally cut-free.
+
+Required failure information:
+
+operational_cut_found(
+    File,
+    Module,
+    PredicateIndicator,
+    ClauseNumber,
+    Line,
+    Context
+).
+
+The full test suite must fail whenever an operational cut is introduced into implementation code.
+
+⸻
+
+3. Replace Cut-Based Cut Classification
+
+The current ordered cut classification must be rewritten without !/0.
+
+Required public or module-local interface:
+
+cut_class_of_predicate(+Clauses, +PredicateIndicator, -Class).
+
+The predicate must be deterministic.
+
+Required initial classes:
+
+no_cut
+safe_if_commit
+fallback_unsafe_cut
+
+The implementation must later support the complete classification set already defined by Detlog.
+
+Required structure:
+
+cut_class_of_predicate(Clauses, PI, Class) :-
+    classify_cut_conditions(Clauses, PI, Conditions),
+    select_cut_class(Conditions, Class).
+
+Example classification facts:
+
+cut_conditions{
+    contains_cut:false,
+    matches_if_commit:false,
+    contains_disjunction:false,
+    contains_meta_call:false,
+    contains_precommit_effect:false
+}
+
+Required selection:
+
+select_cut_class(Conditions, Class) :-
+    ordered_decision(
+        [
+            rule(no_cut_condition(Conditions), no_cut),
+            rule(safe_if_commit_condition(Conditions), safe_if_commit)
+        ],
+        fallback_unsafe_cut,
+        Class
+    ).
+
+The classifier must return exactly one class.
+
+It must not leave a choice point.
+
+⸻
+
+4. Explicit Ordered Decision Runtime
+
+Provide a real ordered decision predicate suitable for compiler use.
+
+Required interface:
+
+decision(+Cases, :Else).
+
+Required case representation:
+
+case(:Condition, :Action)
+
+Required semantics:
+
+1. examine cases from left to right;
+2. run each condition at most once;
+3. execute the action associated with the first successful condition;
+4. do not inspect later cases after selection;
+5. execute Else only when all conditions fail;
+6. preserve bindings produced by the successful condition;
+7. propagate exceptions without evaluating later cases;
+8. leave no choice point when the selected action is deterministic.
+
+Required example:
+
+classify_value(X, Class) :-
+    decision(
+        [
+            case(X < 0, Class = negative),
+            case(X =:= 0, Class = zero),
+            case(X > 0, Class = positive)
+        ],
+        Class = unknown
+    ).
+
+The current index-based decision/2 behaviour is insufficient for this requirement and must either be replaced or renamed.
+
+If retained for compatibility, the existing indexed form must be renamed to:
+
+call_indexed_goal(+Index, +Goals).
+
+⸻
+
+5. Explicit Internal Classification Result
+
+Compiler classifiers must return explicit results rather than commit through clause order and cut.
+
+Canonical result:
+
+classification(
+    Class,
+    Confidence,
+    Evidence
+).
+
+Required confidence values:
+
+proved
+conservative
+unsupported
+
+Example:
+
+classification(
+    safe_if_commit,
+    proved,
+    evidence{
+        pattern:conjunction_cut_suffix,
+        disjunction_before_cut:false,
+        disjunction_after_cut:false,
+        effects_before_cut:pure
+    }
+).
+
+Classifiers must remain deterministic even when several pieces of evidence apply.
+
+Multiple findings must be collected first and then resolved through an explicit priority table.
+
+⸻
+
+6. Priority Tables Instead of Clause Commitment
+
+Where the converter previously relied on clause order plus cut, it must use explicit priority data.
+
+Example:
+
+cut_class_priority([
+    no_cut,
+    removable_green_cut,
+    deterministic_clause_selection,
+    safe_if_commit,
+    first_solution,
+    loop_exit,
+    state_transition,
+    unsupported
+]).
+
+Required selector:
+
+select_highest_priority(
+    +PriorityOrder,
+    +ApplicableClasses,
+    -SelectedClass
+).
+
+Requirements:
+
+* deterministic;
+* preserves declared priority;
+* rejects unknown classes;
+* reports conflicting classifications;
+* records all applicable classes in diagnostics;
+* does not silently discard analysis evidence.
+
+Example diagnostic:
+
+classification_resolution{
+    applicable:[first_solution, deterministic_clause_selection],
+    selected:first_solution,
+    reason:higher_priority,
+    predicate:lookup/2,
+    line:42
+}.
+
+⸻
+
+7. Remove Cuts from Code Generation
+
+The code generator must not use cuts to distinguish source directives, queries, clauses, or other terms.
+
+Replace cut-based clauses such as:
+
+assert_source_term(_, (:- _)) :- !.
+assert_source_term(_, (?- _)) :- !.
+
+with explicit term classification.
+
+Required interface:
+
+source_term_kind(+Term, -Kind).
+
+Required kinds:
+
+directive
+query
+fact
+rule
+end_of_file
+unsupported
+
+Required processing:
+
+assert_source_term(Module, Term) :-
+    source_term_kind(Term, Kind),
+    process_source_term(Kind, Module, Term).
+
+Required behaviour:
+
+process_source_term(directive, _, _).
+process_source_term(query, _, _).
+process_source_term(fact, Module, Fact) :-
+    assertz(Module:Fact).
+process_source_term(rule, Module, Rule) :-
+    assertz(Module:Rule).
+
+The selection of process_source_term/3 must be deterministic through mutually exclusive term kinds.
+
+⸻
+
+8. Replace Cut-Based Predicate Status Selection
+
+Predicate conversion status must be determined through explicit Boolean or symbolic conditions.
+
+Required interface:
+
+predicate_conversion_status(
+    +Analysis,
+    +PredicateIndicator,
+    -Status,
+    -Reason
+).
+
+Required statuses:
+
+converted
+fallback
+rejected
+
+Example:
+
+predicate_conversion_status(Analysis, PI, Status, Reason) :-
+    conversion_conditions(Analysis, PI, Conditions),
+    conversion_status_from_conditions(Conditions, Status, Reason).
+
+Required conditions include:
+
+conditions{
+    determinism:det,
+    cut_status:no_cut,
+    effect:pure,
+    recursion:safe,
+    supported_constructs:true
+}
+
+Required output example:
+
+converted,
+all_required_properties_proved
+
+or:
+
+fallback,
+unsafe_cut
+
+The predicate must not rely on a successful first clause followed by !/0.
+
+⸻
+
+9. Detlog Runtime Must Be Cut-Free in Source and Semantics
+
+The runtime predicates must be implemented without explicit !/0.
+
+Required predicates:
+
+guard/1
+decision/2
+if_commit/3
+first/2
+once_det/1
+loop_exit/1
+
+Their semantics must be documented separately.
+
+9.1 guard/1
+
+guard(:Condition).
+
+Requirements:
+
+* accepts only deterministic or semideterministic conditions in fully converted code;
+* succeeds once when the condition succeeds;
+* fails once when it fails;
+* reports or rejects a condition that unexpectedly produces multiple answers when strict checking is enabled.
+
+9.2 if_commit/3
+
+if_commit(:Condition, :Then, :Else).
+
+Requirements:
+
+* inspect only the first success or failure outcome of Condition;
+* retain bindings from the selected condition result;
+* run Then after first condition success;
+* run Else only if the condition has no solution;
+* never run Else because Then subsequently fails;
+* propagate condition exceptions directly;
+* do not repeat condition effects.
+
+9.3 first/2
+
+The current interface must be clarified.
+
+Preferred interface:
+
+first(:Generator, -Bindings).
+
+Bindings must contain the first complete correlated result of the generator.
+
+Example:
+
+first(candidate(X, Y), bindings([x=X, y=Y])).
+
+The predicate must not merely return true.
+
+Alternative permitted interface:
+
+first(+Template, :Generator, -Result).
+
+Example:
+
+first(X-Y, candidate(X, Y), Result).
+
+The Agent must choose one canonical interface, update all calls, tests, and documentation, and remove the ambiguous form.
+
+9.4 once_det/1
+
+once_det(:Goal).
+
+Requirements:
+
+* expose first-solution commitment clearly;
+* preserve first-answer order;
+* be deterministic or semideterministic;
+* not use explicit !/0 in Detlog source;
+* document whether use of SWI-Prolog once/1 is permitted as a transitional implementation.
+
+Long-term preferred implementation:
+
+first_outcome(Goal, Outcome),
+continue_once_outcome(Outcome).
+
+9.5 loop_exit/1
+
+loop_exit/1 must represent an explicit loop-control signal, not merely call a goal once.
+
+Canonical form:
+
+loop_exit(+Reason).
+
+Generated loops must return an outcome such as:
+
+continue(State)
+exit(Reason, State)
+
+The loop driver must stop recurring after receiving exit/2.
+
+⸻
+
+10. once/1 Policy
+
+Detlog must define a clear policy for SWI-Prolog once/1.
+
+Strict mode
+
+In strict cut-free mode:
+
+cut_free(strict)
+
+the converter and runtime must not use:
+
+!/0
+once/1
+call_cleanup/2 patterns whose only purpose is commitment
+
+unless the implementation documents and tests a semantically equivalent explicit mechanism.
+
+Transitional mode
+
+In transitional mode:
+
+cut_free(source)
+
+explicit !/0 is prohibited, but SWI-Prolog once/1 may temporarily be used inside a small audited runtime boundary.
+
+Every such use must be reported by:
+
+detlog_commitment_audit/1.
+
+Example report:
+
+commitment_primitive{
+    file:'prolog/detlog_runtime.pl',
+    predicate:once_det/1,
+    primitive:once/1,
+    status:transitional
+}.
+
+The default development target must be cut_free(strict).
+
+⸻
+
+11. When Splice Must and Must Not Be Used
+
+Splice must not be used merely to replace a deterministic priority decision.
+
+Use explicit decision control when:
+
+* selecting one classification;
+* distinguishing term kinds;
+* selecting converted versus fallback;
+* choosing one code-generation strategy from proven conditions;
+* matching mutually exclusive analyser outcomes.
+
+Use splice when:
+
+* several analysis results must all be retained;
+* candidate transformations are independently generated;
+* multiple clauses produce alternative binding environments;
+* nondeterministic source answers must be converted into explicit data;
+* combinations of independent alternatives must be streamed;
+* benchmark or proof candidates must be compared.
+
+Example appropriate splice usage:
+
+collect_cut_candidates(CutSite, CandidatePackets),
+splice_each(CandidatePackets, evaluate_candidate).
+
+Example inappropriate splice usage:
+
+% Do not use splice merely to select no_cut before safe_if_commit.
+
+The compiler must include a trace explanation:
+
+control_choice{
+    mechanism:decision,
+    reason:single_ordered_classification
+}.
+
+or:
+
+control_choice{
+    mechanism:splice,
+    reason:multiple_alternative_binding_sets
+}.
+
+⸻
+
+12. Candidate Transformation Pipeline
+
+For each cut site, the analyser must generate all plausible transformations without committing prematurely.
+
+Required pipeline:
+
+parse cut site
+→ compute exact scope
+→ gather applicable classifications
+→ generate candidate rewrites
+→ reject semantically invalid candidates
+→ compare remaining candidates
+→ select highest-ranked proven candidate
+→ otherwise generate fallback
+
+Required candidate representation:
+
+cut_candidate{
+    kind:if_commit,
+    generated_goal:Goal,
+    preserved_bindings:Bindings,
+    preserved_effects:true,
+    answer_order_preserved:true,
+    proof_status:proved,
+    cost:Cost,
+    diagnostics:Diagnostics
+}.
+
+The candidate generator may be nondeterministic internally only when its outputs are immediately materialised into an explicit collection or packet.
+
+Candidate selection must itself be deterministic and cut-free.
+
+⸻
+
+13. Complete Transformation Rather Than Wrapper-Only Generation
+
+The Agent must replace wrapper-only “converted” predicates with actual transformed bodies.
+
+A predicate must not be labelled converted merely because analysis says it is deterministic while the generated wrapper delegates to the original source predicate.
+
+Required definition:
+
+converted:
+    The emitted predicate body is produced from the analysed intermediate
+    representation and does not delegate normal execution to the original
+    predicate.
+fallback:
+    The emitted predicate explicitly delegates to the original source predicate.
+
+Generated converted code must contain:
+
+* transformed clauses;
+* explicit decision constructs;
+* generated deterministic loops;
+* splice operations where required;
+* explicit binding tuples;
+* no source cut;
+* no hidden call back to the original predicate except approved external dependencies.
+
+Diagnostics must identify wrapper-only behaviour as:
+
+conversion_status(wrapper_only_not_converted).
+
+until full body generation is implemented.
+
+⸻
+
+14. Mutually Exclusive Clause Generation
+
+Where analysis proves head patterns are mutually exclusive, prefer ordinary cut-free Prolog clauses.
+
+Source:
+
+length_det([], 0) :-
+    !.
+length_det([_|Xs], N) :-
+    length_det(Xs, N0),
+    N is N0 + 1.
+
+Generated:
+
+length_det([], 0).
+length_det([_|Xs], N) :-
+    length_det(Xs, N0),
+    N is N0 + 1.
+
+The analyser must prove exclusivity from the head patterns.
+
+Required proof record:
+
+exclusivity_proof{
+    clauses:[1,2],
+    method:non_unifiable_heads,
+    result:proved
+}.
+
+Do not generate decision/2 when mutually exclusive ordinary clauses are simpler and equally correct.
+
+⸻
+
+15. State-Based Commitment
+
+For internal compiler workflows that currently need “commit and continue,” use explicit state transitions.
+
+Canonical compiler state:
+
+compiler_state{
+    phase:cut_analysis,
+    status:continue,
+    selected:none,
+    diagnostics:[]
+}
+
+Required statuses:
+
+continue
+selected(Result)
+fallback(Reason)
+error(Error)
+
+Example:
+
+classify_cut_step(Input, State0, State).
+
+Once State.status becomes selected(_), later classification steps must preserve that state rather than execute alternative actions.
+
+This provides commitment without !/0.
+
+⸻
+
+16. Static Determinism Verification of the Converter
+
+The Agent must add determinism tests for internal Detlog predicates.
+
+At minimum, verify:
+
+classify_cuts/2
+cut_class_of_predicate/3
+source_term_kind/2
+predicate_conversion_status/4
+select_highest_priority/3
+decision/2
+if_commit/3
+first/2
+once_det/1
+generate_module/5
+
+Required test helper:
+
+assert_det(Goal).
+assert_semidet(Goal).
+
+assert_det/1 must verify exactly one success.
+
+assert_semidet/1 must verify zero or one success.
+
+The test must detect residual choice points where SWI-Prolog facilities permit.
+
+⸻
+
+17. Source Cut Versus Converter Cut Tests
+
+Add separate test groups.
+
+17.1 Source-cut acceptance tests
+
+Verify that Detlog can read and classify:
+
+p :- a, !, b.
+
+17.2 Converter cut prohibition tests
+
+Verify no implementation predicate executes !/0.
+
+17.3 Quoted cut tests
+
+Verify this is permitted:
+
+sub_term(!, Body)
+
+because ! is being inspected as source data.
+
+17.4 Generated cut-free tests
+
+Verify converted output contains no callable cut term.
+
+17.5 Fallback tests
+
+Verify fallback may call an original source predicate containing cut, but:
+
+* the fallback is reported;
+* the generated wrapper is labelled fallback;
+* Detlog does not claim the predicate is converted;
+* strict output mode may reject fallback entirely.
+
+⸻
+
+18. Regression Tests for Current Cut Sites
+
+Add regression tests covering every current implementation cut.
+
+Required cases:
+
+1. a predicate with no cut is classified no_cut;
+2. a simple (Condition, !, Then) body is classified safe_if_commit;
+3. a cut with disjunction in the condition is classified fallback;
+4. a cut with disjunction in the suffix is classified fallback;
+5. source directives are skipped without converter cut;
+6. source queries are skipped without converter cut;
+7. facts are asserted correctly;
+8. rules are asserted correctly;
+9. deterministic pure predicates receive converted status;
+10. all other predicates receive fallback with a reason;
+11. classification predicates return one answer only;
+12. adding a new classification does not depend on source clause ordering.
+
+⸻
+
+19. Property-Based Tests
+
+Generate small source predicates containing combinations of:
+
+* facts;
+* deterministic clauses;
+* semideterministic guards;
+* cuts;
+* disjunctions;
+* failure;
+* exceptions;
+* recursion;
+* repeated variables;
+* multiple source clauses.
+
+For each supported conversion, compare:
+
+source answers
+generated answers
+answer order
+duplicate preservation
+failure
+exception
+observable effect log
+
+The comparison must include bounded execution limits to avoid hanging on generated random recursion.
+
+A converted predicate passes only when all relevant observable properties match.
+
+⸻
+
+20. Cut-Free CI Check
+
+Add a dedicated CI test stage:
+
+cut-free-implementation
+
+Required steps:
+
+swipl -q -s test/test_cut_free_implementation.pl -g run_tests -t halt
+swipl -q -s test/run_tests.pl -g run_tests -t halt
+swipl -q -s benchmark/run_benchmarks.pl
+
+The first command must fail before ordinary tests when operational cuts are found.
+
+The CI report must list exact file and predicate locations.
+
+⸻
+
+21. Documentation Requirements
+
+Update:
+
+README.md
+PROGRAM_REQUIREMENTS.md
+docs/architecture.md
+
+The documentation must clearly state:
+
+Detlog accepts Prolog programs containing cut, but the Detlog converter and its fully converted output are themselves operationally cut-free.
+
+Also explain:
+
+* quoted source cuts are permitted;
+* fallback may execute original source containing cuts;
+* decision is used for ordered single selection;
+* splice is used for explicit alternative sets;
+* once/1, if temporarily retained, is an audited transitional primitive;
+* converted and fallback predicates are different statuses.
+
+⸻
+
+22. GitHub Copilot Agent Implementation Stages
+
+Stage 1: Inventory
+
+1. Parse all implementation files.
+2. identify operational cuts;
+3. distinguish quoted and test cuts;
+4. produce docs/cut_inventory.md;
+5. add failing tests for each operational cut.
+
+Stage 2: Classification refactor
+
+1. remove cuts from detlog_cuts.pl;
+2. introduce explicit condition records;
+3. implement deterministic priority selection;
+4. test all classification outcomes.
+
+Stage 3: Code-generator refactor
+
+1. remove cuts from term processing;
+2. remove cuts from conversion-status selection;
+3. introduce explicit term kinds and conversion reasons;
+4. ensure code generation remains deterministic.
+
+Stage 4: Runtime completion
+
+1. replace or rename the existing index-based decision/2;
+2. implement ordered decision/2;
+3. correct the semantics and interface of first/2;
+4. implement explicit loop_exit/1;
+5. audit once/1.
+
+Stage 5: Actual body transformation
+
+1. stop labelling wrapper-only predicates as converted;
+2. emit transformed source bodies;
+3. add decision, loop, and splice generation;
+4. retain fallback for unsupported predicates.
+
+Stage 6: Repository invariant
+
+1. implement detlog_verify_cut_free/0;
+2. add repository-wide scanning;
+3. add CI checks;
+4. update documentation.
+
+Stage 7: Semantic verification
+
+1. compare source and generated answers;
+2. verify order and duplicates;
+3. verify bindings;
+4. verify effects and exceptions;
+5. verify no residual choice points;
+6. run benchmarks.
+
+At every stage, the Agent must:
+
+* implement the feature;
+* add unit tests;
+* add integration tests;
+* run the entire test suite;
+* inspect generated code;
+* update documentation;
+* record progress;
+* avoid changing source semantics merely to make tests pass.
+
+⸻
+
+23. Acceptance Criteria
+
+The work is complete only when all of the following hold:
+
+1. no Detlog implementation predicate operationally invokes !/0;
+2. source programs containing cut remain accepted;
+3. quoted inspection of ! remains supported;
+4. detlog_cuts.pl classifies cuts deterministically without cut;
+5. detlog_codegen.pl processes term kinds without cut;
+6. predicate conversion status is selected without cut;
+7. ordered decision/2 is fully implemented;
+8. first/2 returns meaningful correlated results;
+9. loop_exit/1 represents loop termination rather than calling a goal once;
+10. every use of once/1 is removed or explicitly audited;
+11. generated converted predicates contain no cuts;
+12. fallback predicates are never mislabelled as converted;
+13. actual converted bodies are emitted rather than wrapper-only delegation;
+14. splice is used only for explicit alternatives, not ordinary ordered selection;
+15. source-versus-generated semantic tests pass;
+16. the cut-free CI stage passes;
+17. benchmarks report any performance regression honestly;
+18. README and architecture documentation match implementation behaviour.
+
+⸻
+
+24. Final Required Research Property
+
+The resulting system should support the following precise claim:
+
+Detlog is an in-SWI-Prolog source converter that can analyse source programs containing Prolog cut while implementing its own analysis, classification, conversion, runtime control, and generated converted predicates without operational use of cut. It replaces internal commitment with explicit decisions, mutually exclusive clauses, state transitions, first-result outcomes, deterministic loops, and splice-based alternative processing where appropriate.
+
+This claim must not be made until the acceptance tests establish it.
+
+This specification closes both immediate gaps: removing the existing cuts from the converter and ensuring the replacement constructs become substantive Detlog mechanisms rather than names wrapped around once/1 or call/1.
