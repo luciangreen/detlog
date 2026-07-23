@@ -64,6 +64,7 @@ This implementation prioritizes semantic safety: unsupported or uncertain constr
 - Splice helpers: `splice/2`, `splice_collect/2`, `splice_each/2`, `splice_first/2`, `splice_select/3`.
 - Loop adapters: wrappers for `member/2`, `between/3`, `findall/3`, `bagof/3`, `setof/3`.
 - Decision and cut helpers: `guard/1`, `decision/2`, `if_commit/3`, `first/2`, `once_det/1`, `loop_exit/1`.
+- Cut-free verification: `detlog_verify_cut_free/0` checks implementation modules for operational cut usage.
 
 ## Diagnostics and source mapping
 
@@ -75,6 +76,14 @@ Detlog records:
 - conversion status (`converted` or `fallback`).
 
 Fallback diagnostics are available in `detlog_diagnostics:diagnostics/1`.
+
+## Cut policy
+
+- Detlog accepts source programs that contain cut.
+- Detlog implementation modules and generated converted predicates are operationally cut-free.
+- Quoted source-cut inspection (`sub_term(!, Body)`) is allowed for analysis.
+- Fallback wrappers may call original source predicates that contain cut; fallback is reported and not labeled converted.
+- `decision/2` performs ordered single selection; splice helpers are used for explicit alternative sets.
 
 ## Optional adapters
 

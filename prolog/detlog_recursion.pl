@@ -42,7 +42,6 @@ recursion_of_predicate(Clauses, PI, Recursive, Tail, Uncertain) :-
     (Recursive == true, Tail == false -> Uncertain = true ; Uncertain = false).
 
 tail_call((_, Last), Name, Arity) :-
-    !,
     tail_call(Last, Name, Arity).
 tail_call(Goal, Name, Arity) :-
     callable(Goal),

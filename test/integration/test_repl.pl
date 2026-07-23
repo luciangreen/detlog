@@ -20,7 +20,7 @@ test(code_output_file) :-
         read_string(ReadStream, _, Code),
         close(ReadStream)
     ),
-    sub_string(Code, _, _, _, "det_sum(A,B) :-"),
+    sub_string(Code, _, _, _, "det_sum(A,B):-"),
     delete_file(OutFile).
 
 :- end_tests(detlog_repl).

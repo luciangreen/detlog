@@ -1,0 +1,19 @@
+name: cut-free-implementation
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  cut-free-implementation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SWI-Prolog
+        run: sudo apt-get update && sudo apt-get install -y swi-prolog-nox
+      - name: Cut-free invariant
+        run: swipl -q -s test/test_cut_free_implementation.pl -g run_tests -t halt
+      - name: Test suite
+        run: swipl -q -s test/run_tests.pl -g run_tests -t halt
+      - name: Benchmarks
+        run: swipl -q -s benchmark/run_benchmarks.pl

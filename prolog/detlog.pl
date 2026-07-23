@@ -1,4 +1,4 @@
-:- module(detlog, [detlog/2, detlog/3, detlog_compile/2]).
+:- module(detlog, [detlog/2, detlog/3, detlog_compile/2, detlog_verify_cut_free/0]).
 
 :- use_module(library(option)).
 :- use_module(library(lists)).
@@ -8,20 +8,21 @@
 :- use_module(detlog_source_map).
 :- use_module(detlog_cache).
 :- use_module(detlog_diagnostics).
+:- use_module(detlog_runtime).
+:- use_module(detlog_verify).
 
 detlog(File, Query) :-
     detlog(File, Query, []).
 
 detlog(File, Query, Options0) :-
     detlog_options(Options0, Options),
-    once(compile_for_use(File, Options, GeneratedModule)),
-    !,
+    once_det(compile_for_use(File, Options, GeneratedModule)),
     call(GeneratedModule:Query),
     maybe_run_benchmarks(File, Query, Options).
 
 detlog_compile(File, Options0) :-
     detlog_options(Options0, Options),
-    once(compile_for_use(File, Options, _)).
+    once_det(compile_for_use(File, Options, _)).
 
 compile_for_use(File, Options, Module) :-
     detlog_diagnostics:clear_diagnostics,
@@ -74,20 +75,21 @@ must_be_valid_options(Options) :-
 valid_code_option(false).
 valid_code_option(true).
 valid_code_option(File) :-
-    atom(File).
+    atom(File),
+    File \== true,
+    File \== false.
 
 maybe_display_code(Code, Options) :-
-    option(code(true), Options),
-    !,
-    format('~s~n', [Code]).
-maybe_display_code(_, _).
+    (   option(code(true), Options)
+    ->  format('~s~n', [Code])
+    ;   true
+    ).
 
 maybe_write_code(Code, Options) :-
     option(code(OutputFile), Options),
     atom(OutputFile),
     OutputFile \== true,
     OutputFile \== false,
-    !,
     setup_call_cleanup(
         open(OutputFile, write, Stream),
         format(Stream, '~s', [Code]),
@@ -96,16 +98,16 @@ maybe_write_code(Code, Options) :-
 maybe_write_code(_, _).
 
 maybe_report_trace(Trace, Options) :-
-    option(trace(true), Options),
-    !,
-    forall(member(Line, Trace), format('~w~n', [Line])).
-maybe_report_trace(_, _).
+    (   option(trace(true), Options)
+    ->  forall(member(Line, Trace), format('~w~n', [Line]))
+    ;   true
+    ).
 
 maybe_report_modes(Analysis, SourceInfo, Options) :-
-    option(modes(true), Options),
-    !,
-    format_modes(Analysis.modes, SourceInfo).
-maybe_report_modes(_, _, _).
+    (   option(modes(true), Options)
+    ->  format_modes(Analysis.modes, SourceInfo)
+    ;   true
+    ).
 
 format_modes(Modes, SourceInfo) :-
     forall(
@@ -126,11 +128,11 @@ source_predicate_line(SourceInfo, Predicate, Line) :-
     ).
 
 maybe_run_benchmarks(File, Query, Options) :-
-    option(benchmarks(true), Options),
-    !,
-    statistics(runtime, [StartMs|_]),
-    once(detlog(File, Query, [benchmarks(false)|Options])),
-    statistics(runtime, [EndMs|_]),
-    Duration is EndMs - StartMs,
-    format('benchmark runtime_ms=~w~n', [Duration]).
-maybe_run_benchmarks(_, _, _).
+    (   option(benchmarks(true), Options)
+    ->  statistics(runtime, [StartMs|_]),
+        once_det(detlog(File, Query, [benchmarks(false)|Options])),
+        statistics(runtime, [EndMs|_]),
+        Duration is EndMs - StartMs,
+        format('benchmark runtime_ms=~w~n', [Duration])
+    ;   true
+    ).

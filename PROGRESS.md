@@ -12,11 +12,15 @@
 - Added tests across unit/integration/equivalence/regression folders.
 - Added benchmark runner and README documentation updates.
 - Added `pack.pl` and imported `PROGRAM_REQUIREMENTS.md` into this branch.
+- Removed operational implementation cuts from converter/runtime modules and replaced them with explicit decision flow.
+- Added cut-free repository invariant checker: `detlog_verify_cut_free/0`.
+- Refactored cut classification and code generation to use explicit condition/status models.
+- Added cut-free regression and runtime determinism-focused tests.
 
 ## Current conservative decisions
 
 - Unsafe or uncertain transformations use explicit predicate-level fallback.
-- Conversion currently keeps semantics by delegating generated predicates to source predicates.
+- Converted predicates now emit source clause bodies directly when safety conditions are proved; fallback wrappers remain explicit.
 - Determinism and mode inference are heuristic and designed to avoid unsafe claims.
 
 ## Known limitations and unresolved issues

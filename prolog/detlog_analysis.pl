@@ -46,6 +46,7 @@ body_goal(Goal, Goal) :-
     callable(Goal).
 
 built_in_goal(Goal) :-
-    predicate_property(Goal, built_in),
-    !.
-built_in_goal(_:_).
+    (   predicate_property(Goal, built_in)
+    ->  true
+    ;   Goal = _:_
+    ).

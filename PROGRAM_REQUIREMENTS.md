@@ -1371,3 +1371,13 @@ Version 1 is complete when:
 12. `PROGRESS.md` records completed work, limitations, and unresolved issues.
 13. The README clearly distinguishes fully converted Detlog from ordinary Prolog fallback.
 14. The implementation improves the examination of nondeterministic algorithms and provides a foundation for later MNN-oriented optimisation.
+
+## 34. Cut-free implementation invariant
+
+Detlog must accept source programs containing cut while keeping Detlog implementation and converted output operationally cut-free.
+
+Required checks:
+
+- `detlog_verify_cut_free/0` must parse implementation terms and fail on operational cut use.
+- quoted cut inspection (for analysis) is allowed.
+- fallback wrappers may call source predicates containing cut, but fallback must be diagnosed and must not be marked converted.
