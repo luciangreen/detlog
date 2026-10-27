@@ -66,6 +66,12 @@ This implementation prioritizes semantic safety: unsupported or uncertain constr
 - Decision and cut helpers: `guard/1`, `decision/2`, `if_commit/3`, `first/2`, `once_det/1`, `loop_exit/1`.
 - Cut-free verification: `detlog_verify_cut_free/0` checks implementation modules for operational cut usage.
 
+See [the feature guide](docs/features.md) for the complete current feature
+inventory, option reference, known limitations, and runnable test commands.
+The analysis now propagates unproved determinism and effects through locally
+defined calls, so callers of unsafe helpers are conservatively routed to
+fallback as well.
+
 ## Diagnostics and source mapping
 
 Detlog records:
@@ -96,6 +102,9 @@ Run all tests:
 ```bash
 swipl -q -s test/run_tests.pl -g run_tests -t halt
 ```
+
+For focused analysis tests, the cut-free invariant, and the benchmark smoke
+run, see [docs/features.md](docs/features.md).
 
 ## Benchmarks
 

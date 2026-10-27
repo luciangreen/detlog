@@ -44,7 +44,7 @@ compile_source(Absolute, SourceInfo, _SourceHash, Options0, CacheKey, Module) :-
     Module = Generated.module,
     cache_store(CacheKey, Generated),
     maybe_display_code(Generated.code, Options0),
-    maybe_write_code(Generated.code, Options0),
+    maybe_write_code(Generated.code, Options0, Absolute),
     maybe_report_trace(Generated.trace, Options0),
     maybe_report_modes(Analysis, SourceInfo, Options0).
 
@@ -85,17 +85,27 @@ maybe_display_code(Code, Options) :-
     ;   true
     ).
 
-maybe_write_code(Code, Options) :-
+maybe_write_code(Code, Options, SourceFile) :-
     option(code(OutputFile), Options),
     atom(OutputFile),
     OutputFile \== true,
     OutputFile \== false,
+    ensure_not_source_file(SourceFile, OutputFile),
     setup_call_cleanup(
         open(OutputFile, write, Stream),
         format(Stream, '~s', [Code]),
         close(Stream)
     ).
-maybe_write_code(_, _).
+maybe_write_code(_, _, _).
+
+ensure_not_source_file(SourceFile, OutputFile) :-
+    absolute_file_name(SourceFile, AbsoluteSource, [file_errors(fail)]),
+    absolute_file_name(OutputFile, AbsoluteOutput,
+                       [access(none), file_errors(fail)]),
+    (   same_file(AbsoluteSource, AbsoluteOutput)
+    ->  throw(error(permission_error(overwrite, source_file, OutputFile), _))
+    ;   true
+    ).
 
 maybe_report_trace(Trace, Options) :-
     (   option(trace(true), Options)

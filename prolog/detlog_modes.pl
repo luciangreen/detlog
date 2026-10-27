@@ -16,7 +16,48 @@ infer_modes(Clauses, Modes) :-
         ),
         Raw
     ),
-    sort(Raw, Modes).
+    sort(Raw, InitialModes),
+    propagate_determinism(Clauses, InitialModes, Modes).
+
+propagate_determinism(Clauses, Modes0, Modes) :-
+    maplist(conservative_mode(Clauses, Modes0), Modes0, Modes1),
+    (   Modes1 == Modes0
+    ->  Modes = Modes1
+    ;   propagate_determinism(Clauses, Modes1, Modes)
+    ).
+
+conservative_mode(Clauses, Modes, Mode0, Mode) :-
+    (   Mode0.determinism == det,
+        calls_unproved_local_predicate(Clauses, Mode0.predicate, Modes)
+    ->  Mode = Mode0.put(determinism, unknown)
+    ;   Mode = Mode0
+    ).
+
+calls_unproved_local_predicate(Clauses, PI, Modes) :-
+    member(clause_info{head:Head, body:Body, line:_}, Clauses),
+    functor(Head, Name, Arity),
+    PI == Name/Arity,
+    body_goal(Body, Goal),
+    callable(Goal),
+    functor(Goal, GoalName, GoalArity),
+    GoalPI = GoalName/GoalArity,
+    GoalPI \== PI,
+    member(ModeInfo, Modes),
+    ModeInfo.predicate == GoalPI,
+    ModeInfo.determinism \== det.
+
+body_goal((A, B), Goal) :-
+    (body_goal(A, Goal) ; body_goal(B, Goal)).
+body_goal((A ; B), Goal) :-
+    (body_goal(A, Goal) ; body_goal(B, Goal)).
+body_goal((A -> B), Goal) :-
+    (body_goal(A, Goal) ; body_goal(B, Goal)).
+body_goal((A *-> B), Goal) :-
+    (body_goal(A, Goal) ; body_goal(B, Goal)).
+body_goal(\+ A, Goal) :-
+    body_goal(A, Goal).
+body_goal(Goal, Goal) :-
+    callable(Goal).
 
 predicate_signature(Clauses, Name/Arity) :-
     member(clause_info{head:Head, body:_, line:_}, Clauses),
@@ -67,5 +108,6 @@ contains_choicepoint(Bodies) :-
         ;   Term = setof(_, _, _)
         ;   Term = member(_, _)
         ;   Term = between(_, _, _)
+        ;   Term = call(_)
         )
     ).
