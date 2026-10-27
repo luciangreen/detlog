@@ -16,6 +16,8 @@
 - Added cut-free repository invariant checker: `detlog_verify_cut_free/0`.
 - Refactored cut classification and code generation to use explicit condition/status models.
 - Added cut-free regression and runtime determinism-focused tests.
+- Propagated unproved determinism and effects through local predicate calls, with multi-level regression tests.
+- Added a feature guide with interface/options, component status, runnable tests, and an explicit remaining-work list.
 
 ## Current conservative decisions
 
@@ -26,5 +28,8 @@
 ## Known limitations and unresolved issues
 
 - Full structural rewrites (deep disjunction lowering, broad cut elimination, DCG transformation, loop fusion) are not yet exhaustive.
+- Converted predicates currently emit their original clause bodies; generated deterministic loops, packets, and splice structures are not yet synthesized from general source control flow.
+- Mode/determinism/effect analysis remains heuristic around meta-calls, dynamic predicates, modules, and built-ins.
 - Incremental recompilation currently uses in-memory cache and does not persist between sessions.
 - Optional adapters are placeholders pending external dependency integration.
+- Benchmarks are smoke measurements only; source-versus-generated runtime and memory comparisons remain to be implemented.
